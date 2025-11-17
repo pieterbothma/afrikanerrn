@@ -1,6 +1,23 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
-  }
+    "strict": true,
+    "types": ["nativewind/types"],
+    "baseUrl": ".",
+    "paths": {
+      "@/components/*": ["./components/*"],
+      "@/store/*": ["./store/*"],
+      "@/types/*": ["./types/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "app",
+    "components",
+    "hooks",
+    "providers",
+    "src",
+    "nativewind-env.d.ts",
+    "tailwind.config.js"
+  ]
 }
