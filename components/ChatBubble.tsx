@@ -5,6 +5,7 @@ import type { ChatMessage } from '@/store/chatStore';
 import { useChatStore } from '@/store/chatStore';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
+import MarkdownMessage from './MarkdownMessage';
 
 type ChatBubbleProps = {
   message: ChatMessage;
@@ -98,11 +99,7 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
         {message.imageUri ? (
           <Image source={{ uri: message.imageUri }} className="mb-3 h-40 w-full rounded-lg" />
         ) : null}
-        {message.content.length > 0 ? (
-          <Text className={`font-normal text-base leading-6 ${isUser ? 'text-white' : 'text-foreground'}`}>
-            {message.content}
-          </Text>
-        ) : null}
+        {message.content.length > 0 ? <MarkdownMessage content={message.content} isUser={isUser} /> : null}
         {(message.isFavorite || message.isPinned) && (
           <View className="mt-2 flex-row items-center gap-2">
             {message.isFavorite && (

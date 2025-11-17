@@ -29,6 +29,7 @@ module.exports = {
       fontFamily: {
         sans: ['Geist', 'System'],
         mono: ['Geist Mono', 'Courier'],
+        heading: ['ParkinsansBold', 'System'],
       },
       fontSize: {
         xs: ['12px', { lineHeight: '16px' }],

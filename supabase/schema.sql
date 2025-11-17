@@ -48,6 +48,17 @@ create policy "Self: select messages"
   for select
   using (auth.uid() = user_id);
 
+create policy "Self: update message"
+  on public.messages
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Self: delete message"
+  on public.messages
+  for delete
+  using (auth.uid() = user_id);
+
 -- Usage tracking table for rate limiting
 create table if not exists public.usage_logs (
   id uuid primary key default gen_random_uuid(),

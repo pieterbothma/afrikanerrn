@@ -42,9 +42,10 @@ export default function ImageGenerationModal({
       } else {
         Alert.alert('Oeps!', 'Kon nie beeld skep nie. Probeer asseblief weer.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Beeld generasie gefaal:', error);
-      Alert.alert('Oeps!', 'Kon nie beeld skep nie. Probeer asseblief weer.');
+      const errorMessage = error?.message || 'Kon nie beeld skep nie. Probeer asseblief weer.';
+      Alert.alert('Oeps!', errorMessage);
     } finally {
       setIsGenerating(false);
     }

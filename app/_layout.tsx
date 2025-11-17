@@ -3,6 +3,8 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import { Parkinsans_700Bold } from '@expo-google-fonts/parkinsans';
 
 import { useUserStore } from '@/store/userStore';
 import { initMonitoring } from '@/lib/monitoring';
@@ -21,6 +23,9 @@ export default function RootLayout() {
   const user = useUserStore((state) => state.user);
   const segments = useSegments();
   const [isHydrating, setIsHydrating] = useState(true);
+  const [fontsLoaded] = useFonts({
+    ParkinsansBold: Parkinsans_700Bold,
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +85,8 @@ export default function RootLayout() {
     }
   }, [isHydrating, router, segments, user]);
 
+  const showSplash = isHydrating || !fontsLoaded;
+
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
@@ -87,10 +94,12 @@ export default function RootLayout() {
         className="flex-1 bg-background"
         edges={['top', 'left', 'right', 'bottom']}
       >
-        {isHydrating ? (
+        {showSplash ? (
           <View className="flex-1 items-center justify-center gap-6 px-8">
             <View className="w-full rounded-xl bg-card px-6 py-10 border border-border">
-              <Text className="text-center font-semibold text-4xl text-foreground">Afrikaner.ai</Text>
+              <Text className="text-center font-heading font-semibold text-4xl text-foreground">
+                Afrikaner.ai
+              </Text>
               <Text className="mt-4 text-center font-normal text-base text-muted">
                 Praat. Skryf. Leer. Bou – in Afrikaans.
               </Text>

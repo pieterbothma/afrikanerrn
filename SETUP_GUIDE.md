@@ -84,10 +84,18 @@ For **question 3** (store submission):
 3. Test locally: `npm start`
 4. Build preview: `eas build --platform all --profile preview`
 
+## 🔒 Security
+
+- **Never commit secrets**: All `.env*` files are gitignored
+- **Use EAS secrets for production**: Never hardcode API keys
+- **RLS policies**: All database tables have Row Level Security enabled
+- See `SECURITY.md` for detailed security guidelines
+
 ## 📝 Notes
 
 - The storage bucket `chat-images` is already created and configured
 - All database migrations are applied
 - The app is ready for testing and building
 - See `RELEASE_CHECKLIST.md` for full release process
+- See `SECURITY.md` for security best practices
 

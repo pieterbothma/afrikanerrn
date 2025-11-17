@@ -20,6 +20,7 @@ import {
   PurchasesPackage,
   SubscriptionTier,
   getSubscriptionTier,
+  PRODUCT_IDS,
 } from '@/lib/revenuecat';
 import { USAGE_LIMITS } from '@/lib/usageLimits';
 
@@ -53,13 +54,22 @@ export default function SubscriptionScreen() {
 
       setCurrentTier(tier);
 
-      if (offering) {
+      if (offering && offering.availablePackages) {
         // Find monthly and yearly packages
+        // Check both identifier and packageType for compatibility
         const monthly = offering.availablePackages.find(
-          (pkg) => pkg.identifier === 'monthly' || pkg.packageType === 'MONTHLY'
+          (pkg: any) => 
+            pkg.identifier === 'monthly' || 
+            pkg.identifier === PRODUCT_IDS.PREMIUM_MONTHLY ||
+            pkg.packageType === 'MONTHLY' ||
+            (pkg.product && (pkg.product.identifier === PRODUCT_IDS.PREMIUM_MONTHLY || pkg.product.identifier?.includes('monthly')))
         );
         const yearly = offering.availablePackages.find(
-          (pkg) => pkg.identifier === 'yearly' || pkg.packageType === 'ANNUAL'
+          (pkg: any) => 
+            pkg.identifier === 'yearly' || 
+            pkg.identifier === PRODUCT_IDS.PREMIUM_YEARLY ||
+            pkg.packageType === 'ANNUAL' ||
+            (pkg.product && (pkg.product.identifier === PRODUCT_IDS.PREMIUM_YEARLY || pkg.product.identifier?.includes('yearly') || pkg.product.identifier?.includes('annual')))
         );
 
         setMonthlyPackage(monthly || null);

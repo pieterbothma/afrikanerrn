@@ -79,7 +79,12 @@ export default function ChatScreen() {
       return;
     }
 
-    loadMessagesFromSupabase(user.id, currentConversationId ?? undefined);
+    // Only load when an existing conversation is selected.
+    if (!currentConversationId) {
+      return;
+    }
+
+    loadMessagesFromSupabase(user.id, currentConversationId);
   }, [loadMessagesFromSupabase, user?.id, currentConversationId, isSending]);
 
   useEffect(() => {
@@ -435,37 +440,42 @@ export default function ChatScreen() {
       return;
     }
 
-    // Log usage after successful image generation
-    await logUsage(user.id, 'image_generate');
+    try {
+      // Log usage after successful image generation
+      await logUsage(user.id, 'image_generate');
 
-    let conversationId = currentConversationId;
-    const isNewConversation = !conversationId;
-    if (!conversationId) {
-      conversationId = await createConversation(user.id);
-      if (conversationId) {
-        setCurrentConversationId(conversationId);
+      let conversationId = currentConversationId;
+      const isNewConversation = !conversationId;
+      if (!conversationId) {
+        conversationId = await createConversation(user.id);
+        if (conversationId) {
+          setCurrentConversationId(conversationId);
+        }
       }
+
+      const messageId = generateUUID();
+      const imageMessage: ChatMessage = {
+        id: messageId,
+        role: 'user',
+        content: '(AI-beeld geskep)',
+        imageUri: imageUrl,
+        createdAt: new Date().toISOString(),
+        conversationId: conversationId ?? undefined,
+      };
+
+      addMessage(imageMessage);
+      await saveMessageToSupabase(imageMessage, user.id);
+
+      // Auto-name conversation with AI image
+      if (isNewConversation && conversationId) {
+        await updateConversation(conversationId, 'AI-beeld geskep');
+      }
+
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch (error) {
+      console.error('Kon nie beeld generasie verwerk nie:', error);
+      // Don't show alert here - error was already shown in modal
     }
-
-    const messageId = generateUUID();
-    const imageMessage: ChatMessage = {
-      id: messageId,
-      role: 'user',
-      content: '(AI-beeld geskep)',
-      imageUri: imageUrl,
-      createdAt: new Date().toISOString(),
-      conversationId: conversationId ?? undefined,
-    };
-
-    addMessage(imageMessage);
-    await saveMessageToSupabase(imageMessage, user.id);
-
-    // Auto-name conversation with AI image
-    if (isNewConversation && conversationId) {
-      await updateConversation(conversationId, 'AI-beeld geskep');
-    }
-
-    flatListRef.current?.scrollToEnd({ animated: true });
   };
 
   const handleImageEdited = async (imageUrl: string) => {
@@ -473,37 +483,42 @@ export default function ChatScreen() {
       return;
     }
 
-    // Log usage after successful image edit
-    await logUsage(user.id, 'image_edit');
+    try {
+      // Log usage after successful image edit
+      await logUsage(user.id, 'image_edit');
 
-    let conversationId = currentConversationId;
-    const isNewConversation = !conversationId;
-    if (!conversationId) {
-      conversationId = await createConversation(user.id);
-      if (conversationId) {
-        setCurrentConversationId(conversationId);
+      let conversationId = currentConversationId;
+      const isNewConversation = !conversationId;
+      if (!conversationId) {
+        conversationId = await createConversation(user.id);
+        if (conversationId) {
+          setCurrentConversationId(conversationId);
+        }
       }
+
+      const messageId = generateUUID();
+      const imageMessage: ChatMessage = {
+        id: messageId,
+        role: 'user',
+        content: '(Beeld gewysig)',
+        imageUri: imageUrl,
+        createdAt: new Date().toISOString(),
+        conversationId: conversationId ?? undefined,
+      };
+
+      addMessage(imageMessage);
+      await saveMessageToSupabase(imageMessage, user.id);
+
+      // Auto-name conversation with edited image
+      if (isNewConversation && conversationId) {
+        await updateConversation(conversationId, 'Beeld gewysig');
+      }
+
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch (error) {
+      console.error('Kon nie beeld wysiging verwerk nie:', error);
+      // Don't show alert here - error was already shown in modal
     }
-
-    const messageId = generateUUID();
-    const imageMessage: ChatMessage = {
-      id: messageId,
-      role: 'user',
-      content: '(Beeld gewysig)',
-      imageUri: imageUrl,
-      createdAt: new Date().toISOString(),
-      conversationId: conversationId ?? undefined,
-    };
-
-    addMessage(imageMessage);
-    await saveMessageToSupabase(imageMessage, user.id);
-
-    // Auto-name conversation with edited image
-    if (isNewConversation && conversationId) {
-      await updateConversation(conversationId, 'Beeld gewysig');
-    }
-
-    flatListRef.current?.scrollToEnd({ animated: true });
   };
 
   return (

@@ -8,6 +8,9 @@
 - [ ] Test on iOS simulator
 - [ ] Test on Android emulator
 - [ ] Verify all environment variables are set in EAS secrets
+- [ ] Verify permissions are declared in `app.config.ts` (camera, photo library)
+- [ ] Run security audit (see `SECURITY.md`)
+- [ ] Complete QA checklist (see `QA_CHECKLIST.md`)
 - [ ] Run production build locally: `eas build --platform all --profile production`
 
 ## Assets

@@ -1,10 +1,16 @@
 import OpenAI from 'openai';
 import { fetch as expoFetch } from 'expo/fetch';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+const geminiApiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY;
 
 if (!apiKey) {
   console.warn('OpenAI API key ontbreek. Stel EXPO_PUBLIC_OPENAI_API_KEY in jou omgewingsveranderlikes.');
+}
+
+if (!geminiApiKey) {
+  console.warn('Gemini API key ontbreek. Stel EXPO_PUBLIC_GEMINI_API_KEY in jou omgewingsveranderlikes.');
 }
 
 const openai = new OpenAI({
@@ -12,6 +18,9 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true,
   fetch: expoFetch,
 });
+
+const GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
+const GEMINI_IMAGE_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent`;
 
 type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -159,66 +168,283 @@ export async function* streamAfrikaansMessage(
   }
 }
 
-export async function generateImage(prompt: string): Promise<string | null> {
-  if (!apiKey) {
-    throw new Error('OpenAI API key nie gestel nie. Voeg EXPO_PUBLIC_OPENAI_API_KEY by jou omgewing.');
+/**
+ * Validate and sanitize image generation prompt
+ */
+function validateImagePrompt(prompt: string): { valid: boolean; error?: string; sanitized?: string } {
+  const trimmed = prompt.trim();
+  
+  if (!trimmed) {
+    return { valid: false, error: 'Prompt kan nie leeg wees nie.' };
   }
-
-  try {
-    const response = await openai.images.generate({
-      model: 'dall-e-3',
-      prompt: prompt,
-      n: 1,
-      size: '1024x1024',
-      quality: 'standard',
-    });
-
-    const imageUrl = response.data[0]?.url;
-    if (!imageUrl) {
-      throw new Error('Geen beeld URL ontvang nie.');
-    }
-
-    return imageUrl;
-  } catch (error) {
-    console.error('Beeld generasie gefaal:', error);
-    throw error;
+  
+  if (trimmed.length < 3) {
+    return { valid: false, error: 'Prompt moet minstens 3 karakters wees.' };
   }
+  
+  // Gemini 2.5 Flash ondersteun lang prompts, maar ons hou dit beknop vir mobile UX
+  if (trimmed.length > 1000) {
+    return { valid: false, error: 'Prompt is te lank. Gebruik maksimum 1000 karakters.' };
+  }
+  
+  // Sanitize: remove any potentially problematic characters but keep Afrikaans characters
+  const sanitized = trimmed
+    .replace(/[<>{}[\]\\]/g, '') // Remove brackets and backslashes
+    .trim();
+  
+  if (sanitized.length < 3) {
+    return { valid: false, error: 'Prompt bevat ongeldige karakters.' };
+  }
+  
+  return { valid: true, sanitized };
 }
 
-export async function editImage(imageUri: string, prompt: string, maskUri?: string): Promise<string | null> {
-  if (!apiKey) {
-    throw new Error('OpenAI API key nie gestel nie. Voeg EXPO_PUBLIC_OPENAI_API_KEY by jou omgewing.');
+export async function generateImage(prompt: string, retries = 2): Promise<string | null> {
+  if (!geminiApiKey) {
+    throw new Error('Gemini API key nie gestel nie. Voeg EXPO_PUBLIC_GEMINI_API_KEY by jou omgewing.');
   }
 
-  try {
-    const imageResponse = await fetch(imageUri);
-    const imageBlob = await imageResponse.blob();
-    const imageFile = new File([imageBlob], 'image.png', { type: 'image/png' });
-
-    let maskFile: File | undefined;
-    if (maskUri) {
-      const maskResponse = await fetch(maskUri);
-      const maskBlob = await maskResponse.blob();
-      maskFile = new File([maskBlob], 'mask.png', { type: 'image/png' });
-    }
-
-    const response = await openai.images.edit({
-      image: imageFile,
-      mask: maskFile,
-      prompt: prompt,
-      n: 1,
-      size: '1024x1024',
-    });
-
-    const imageUrl = response.data[0]?.url;
-    if (!imageUrl) {
-      throw new Error('Geen beeld URL ontvang nie.');
-    }
-
-    return imageUrl;
-  } catch (error) {
-    console.error('Beeld wysiging gefaal:', error);
-    throw error;
+  // Validate prompt
+  const validation = validateImagePrompt(prompt);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Ongeldige prompt.');
   }
+
+  const sanitizedPrompt = validation.sanitized || prompt;
+
+  let lastError: any = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await callGeminiImageEndpoint({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: sanitizedPrompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'image/png',
+        },
+      });
+
+      const inlineImage = extractGeminiInlineImage(response);
+      if (!inlineImage) {
+        throw new Error('Geen beeld data van Gemini ontvang nie.');
+      }
+
+      return await persistBase64Image(inlineImage, 'gemini-generated');
+    } catch (error: any) {
+      lastError = error;
+
+      if (attempt < retries) {
+        await wait(Math.pow(2, attempt) * 1000); // 1s, 2s, 4s
+      }
+    }
+  }
+
+  console.error('Beeld generasie gefaal:', lastError);
+  throw new Error(lastError?.message || 'Kon nie beeld skep nie. Probeer asseblief weer.');
+}
+
+export async function editImage(imageUri: string, prompt: string, maskUri?: string, retries = 2): Promise<string | null> {
+  if (!geminiApiKey) {
+    throw new Error('Gemini API key nie gestel nie. Voeg EXPO_PUBLIC_GEMINI_API_KEY by jou omgewing.');
+  }
+
+  // Validate prompt
+  const validation = validateImagePrompt(prompt);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Ongeldige prompt.');
+  }
+
+  const sanitizedPrompt = validation.sanitized || prompt;
+
+  // Validate image URI
+  if (!imageUri || (!imageUri.startsWith('http') && !imageUri.startsWith('file://') && !imageUri.startsWith('data:'))) {
+    throw new Error('Ongeldige beeld pad of URL.');
+  }
+
+  const inlineImageData = await getBase64FromUri(imageUri);
+  const mimeType = inferMimeType(imageUri);
+
+  let lastError: any = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const parts: GeminiPart[] = [
+        {
+          inline_data: {
+            mime_type: mimeType,
+            data: inlineImageData,
+          },
+        },
+        { text: sanitizedPrompt },
+      ];
+
+      if (maskUri) {
+        const maskData = await getBase64FromUri(maskUri);
+        parts.push({
+          inline_data: {
+            mime_type: inferMimeType(maskUri),
+            data: maskData,
+          },
+        });
+      }
+
+      const response = await callGeminiImageEndpoint({
+        contents: [
+          {
+            role: 'user',
+            parts,
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'image/png',
+        },
+      });
+
+      const inlineImage = extractGeminiInlineImage(response);
+      if (!inlineImage) {
+        throw new Error('Geen beeld data van Gemini ontvang nie.');
+      }
+
+      return await persistBase64Image(inlineImage, 'gemini-edited');
+    } catch (error: any) {
+      lastError = error;
+
+      if (attempt < retries) {
+        await wait(Math.pow(2, attempt) * 1000); // 1s, 2s, 4s
+      }
+    }
+  }
+
+  console.error('Beeld wysiging gefaal:', lastError);
+  throw new Error(lastError?.message || 'Kon nie beeld wysig nie. Probeer asseblief weer.');
+}
+ 
+type GeminiInlineData = {
+  mime_type?: string;
+  mimeType?: string;
+  data?: string;
+};
+
+type GeminiPart =
+  | { text: string }
+  | { inline_data: GeminiInlineData }
+  | { inlineData: GeminiInlineData };
+
+type GeminiContent = {
+  role?: string;
+  parts: GeminiPart[];
+};
+
+type GeminiGenerateRequest = {
+  contents: GeminiContent[];
+  generationConfig?: {
+    responseMimeType?: string;
+  };
+};
+
+type GeminiCandidate = {
+  content?: {
+    parts?: GeminiPart[];
+  };
+};
+
+type GeminiGenerateResponse = {
+  candidates?: GeminiCandidate[];
+  error?: {
+    message?: string;
+    status?: string;
+    code?: number;
+  };
+};
+
+async function callGeminiImageEndpoint(body: GeminiGenerateRequest): Promise<GeminiGenerateResponse> {
+  if (!geminiApiKey) {
+    throw new Error('Gemini API key nie gestel nie. Voeg EXPO_PUBLIC_GEMINI_API_KEY by jou omgewing.');
+  }
+
+  const response = await expoFetch(`${GEMINI_IMAGE_ENDPOINT}?key=${geminiApiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const message = data?.error?.message ?? `Gemini API-fout (${response.status})`;
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+function extractGeminiInlineImage(response: GeminiGenerateResponse): string | null {
+  const candidates = response?.candidates ?? [];
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts ?? [];
+    for (const part of parts) {
+      const inlineData: GeminiInlineData | undefined =
+        (part as { inline_data?: GeminiInlineData }).inline_data ??
+        (part as { inlineData?: GeminiInlineData }).inlineData;
+      const data = inlineData?.data;
+      if (data) {
+        return data;
+      }
+    }
+  }
+  return null;
+}
+
+async function persistBase64Image(base64Data: string, prefix: string): Promise<string> {
+  const directory = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!directory) {
+    throw new Error('Geen lêerstelsel beskikbaar om beeld te stoor nie.');
+  }
+
+  const fileUri = `${directory}${prefix}-${Date.now()}.png`;
+  await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+  return fileUri;
+}
+
+async function getBase64FromUri(uri: string): Promise<string> {
+  if (uri.startsWith('data:')) {
+    const [, data] = uri.split(',');
+    if (!data) {
+      throw new Error('Ongeldige data URI.');
+    }
+    return data;
+  }
+
+  if (uri.startsWith('http')) {
+    const downloadPath = `${FileSystem.cacheDirectory ?? FileSystem.documentDirectory}gemini-source-${Date.now()}.png`;
+    const download = await FileSystem.downloadAsync(uri, downloadPath);
+    return FileSystem.readAsStringAsync(download.uri, { encoding: FileSystem.EncodingType.Base64 });
+  }
+
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+}
+
+function inferMimeType(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+  if (lower.endsWith('.webp')) {
+    return 'image/webp';
+  }
+  return 'image/png';
+}
+
+async function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 

@@ -36,10 +36,32 @@ export type PremiumTier = 'premium_monthly' | 'premium_yearly';
 let isInitialized = false;
 
 /**
+ * Check if running on native platform (not Expo Go or web)
+ */
+function isNativePlatform(): boolean {
+  try {
+    // Check if we're in a native build
+    const { Platform } = require('react-native');
+    // In Expo Go, native modules may not be available
+    // In production builds, they should be available
+    return Platform.OS === 'ios' || Platform.OS === 'android';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Initialize RevenueCat SDK
  * Call this once when the app starts, after user authentication
+ * Only initializes on native platforms (not Expo Go or web)
  */
 export async function initializeRevenueCat(userId: string): Promise<void> {
+  // Only initialize on native platforms
+  if (!isNativePlatform()) {
+    console.warn('RevenueCat: Not running on native platform. Subscriptions disabled.');
+    return;
+  }
+
   if (!Purchases) {
     console.warn('RevenueCat SDK not available. Subscriptions will not work.');
     return;
@@ -64,9 +86,13 @@ export async function initializeRevenueCat(userId: string): Promise<void> {
     
     isInitialized = true;
     console.log('RevenueCat initialized successfully');
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to initialize RevenueCat:', error);
     // Don't throw - allow app to continue without RevenueCat
+    // Log specific error for debugging
+    if (error?.message) {
+      console.error('RevenueCat error details:', error.message);
+    }
   }
 }
 
@@ -108,31 +134,46 @@ export async function getCustomerInfo(): Promise<any | null> {
  * Returns 'free' if no active subscription
  */
 export async function getSubscriptionTier(): Promise<SubscriptionTier> {
-  if (!Purchases) {
+  if (!Purchases || !isInitialized) {
     return 'free';
   }
 
   try {
     const customerInfo = await Purchases.getCustomerInfo();
     
+    if (!customerInfo) {
+      return 'free';
+    }
+    
     // Check for active entitlements
-    if (customerInfo?.entitlements?.active?.['premium']) {
-      const productIdentifier = customerInfo.entitlements.active['premium'].productIdentifier;
+    // RevenueCat uses entitlements, not direct product IDs
+    const activeEntitlements = customerInfo.entitlements?.active;
+    
+    if (activeEntitlements && Object.keys(activeEntitlements).length > 0) {
+      // Check for premium entitlement (configured in RevenueCat dashboard)
+      const premiumEntitlement = activeEntitlements['premium'] || activeEntitlements['premium_monthly'] || activeEntitlements['premium_yearly'];
       
-      if (productIdentifier === PRODUCT_IDS.PREMIUM_MONTHLY) {
+      if (premiumEntitlement) {
+        const productIdentifier = premiumEntitlement.productIdentifier;
+        
+        // Match product IDs
+        if (productIdentifier === PRODUCT_IDS.PREMIUM_MONTHLY || productIdentifier.includes('monthly')) {
+          return 'premium_monthly';
+        }
+        if (productIdentifier === PRODUCT_IDS.PREMIUM_YEARLY || productIdentifier.includes('yearly') || productIdentifier.includes('annual')) {
+          return 'premium_yearly';
+        }
+        
+        // If premium entitlement exists but product ID doesn't match, check package type
+        // This is a fallback - product IDs should match in RevenueCat dashboard
         return 'premium_monthly';
       }
-      if (productIdentifier === PRODUCT_IDS.PREMIUM_YEARLY) {
-        return 'premium_yearly';
-      }
-      
-      // If premium entitlement exists but product ID doesn't match, assume monthly
-      return 'premium_monthly';
     }
     
     return 'free';
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to get subscription tier:', error);
+    // Return free on error to be safe
     return 'free';
   }
 }

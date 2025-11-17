@@ -75,9 +75,10 @@ export default function ImageEditModal({
       } else {
         Alert.alert('Oeps!', 'Kon nie beeld wysig nie. Probeer asseblief weer.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Beeld wysiging gefaal:', error);
-      Alert.alert('Oeps!', 'Kon nie beeld wysig nie. Probeer asseblief weer.');
+      const errorMessage = error?.message || 'Kon nie beeld wysig nie. Probeer asseblief weer.';
+      Alert.alert('Oeps!', errorMessage);
     } finally {
       setIsEditing(false);
     }

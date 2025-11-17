@@ -151,7 +151,7 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
               style={{ paddingTop: Math.max(insets.top, 16) }}
             >
               <View className="flex-row items-center justify-between mb-4">
-                <Text className="font-semibold text-xl text-foreground">Menu</Text>
+                <Text className="font-heading font-semibold text-xl text-foreground">Menu</Text>
                 <TouchableOpacity onPress={onClose} className="p-2">
                   <Ionicons name="close" size={24} color="#2C2C2C" />
                 </TouchableOpacity>
@@ -160,7 +160,7 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
 
             <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
               <View className="px-6 py-4">
-                <Text className="font-semibold text-sm text-muted mb-3 uppercase">Jou Gesprekke</Text>
+                <Text className="font-heading font-semibold text-sm text-muted mb-3 uppercase">Jou Gesprekke</Text>
                 {conversations.length === 0 ? (
                   <Text className="font-normal text-sm text-muted mb-4">Geen gesprekke</Text>
                 ) : (
@@ -190,7 +190,7 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                             className="flex-row items-start justify-between"
                           >
                             <View className="flex-1 mr-2">
-                              <Text className="font-medium text-base text-foreground mb-1" numberOfLines={1}>
+                              <Text className="font-heading font-medium text-base text-foreground mb-1" numberOfLines={1}>
                                 {conv.title || 'Geen titel'}
                               </Text>
                               <Text className="font-normal text-xs text-muted">{formatDate(conv.updatedAt)}</Text>
@@ -222,7 +222,7 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                   </View>
                 )}
 
-                <Text className="font-semibold text-sm text-muted mb-3 uppercase">Kategorieë</Text>
+                <Text className="font-heading font-semibold text-sm text-muted mb-3 uppercase">Kategorieë</Text>
                 <View className="gap-2">
                   {CATEGORIES.map((category) => (
                     <TouchableOpacity
@@ -235,7 +235,9 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
                     >
                       <View className="flex-row items-center gap-3">
                         <Ionicons name={category.icon as any} size={20} color={ACCENT} />
-                        <Text className="font-medium text-base text-foreground">{category.name}</Text>
+                        <Text className="font-heading font-medium text-base text-foreground">
+                          {category.name}
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   ))}

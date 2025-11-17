@@ -123,7 +123,7 @@ For production, set up RevenueCat webhooks to sync subscription status:
 ## 🐛 Troubleshooting
 
 **"RevenueCat API key not found" warning:**
-- Make sure `EXPO_PUBLIC_REVENUECAT_API_KEY` is in `.env.local`
+- Make sure `EXPO_PUBLIC_REVENUECAT_API_KEY` is in `.env.local` (never commit this file - see `SECURITY.md`)
 - Restart Expo dev server after adding
 
 **"No packages available":**

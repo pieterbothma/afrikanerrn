@@ -31,6 +31,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.pieterbothma2.afrikanerai",
+    infoPlist: {
+      NSCameraUsageDescription:
+        "Afrikaner.ai benodig toegang tot jou kamera om foto's te neem vir gesprekke.",
+      NSPhotoLibraryUsageDescription:
+        "Afrikaner.ai benodig toegang tot jou foto biblioteek om beelde te kies vir gesprekke.",
+      NSPhotoLibraryAddUsageDescription:
+        "Afrikaner.ai benodig toegang om beelde te stoor na jou foto biblioteek.",
+    },
   },
   android: {
     adaptiveIcon: {
@@ -39,6 +47,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
+    permissions: [
+      "CAMERA",
+      "READ_EXTERNAL_STORAGE",
+      "WRITE_EXTERNAL_STORAGE",
+      "READ_MEDIA_IMAGES",
+    ],
   },
   web: {
     favicon: "./assets/favicon.png",
