@@ -363,25 +363,41 @@ type GeminiGenerateResponse = {
 
 async function callGeminiImageEndpoint(body: GeminiGenerateRequest): Promise<GeminiGenerateResponse> {
   if (!geminiApiKey) {
+    console.error('Gemini API key ontbreek');
     throw new Error('Gemini API key nie gestel nie. Voeg EXPO_PUBLIC_GEMINI_API_KEY by jou omgewing.');
   }
 
-  const response = await expoFetch(`${GEMINI_IMAGE_ENDPOINT}?key=${geminiApiKey}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const response = await expoFetch(`${GEMINI_IMAGE_ENDPOINT}?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-  const data = await response.json();
+    const data = await response.json();
 
-  if (!response.ok) {
-    const message = data?.error?.message ?? `Gemini API-fout (${response.status})`;
-    throw new Error(message);
+    if (!response.ok) {
+      console.error('Gemini API fout:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: data?.error,
+      });
+      const message = data?.error?.message ?? `Gemini API-fout (${response.status})`;
+      throw new Error(message);
+    }
+
+    return data;
+  } catch (error: any) {
+    // Re-throw if it's already our formatted error
+    if (error?.message && error.message.includes('Gemini API')) {
+      throw error;
+    }
+    // Otherwise, wrap network/parsing errors
+    console.error('Gemini API netwerk fout:', error);
+    throw new Error(`Netwerk fout: ${error?.message || 'Kon nie met Gemini API verbind nie.'}`);
   }
-
-  return data;
 }
 
 function extractGeminiInlineImage(response: GeminiGenerateResponse): string | null {
