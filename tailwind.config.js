@@ -12,24 +12,25 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        background: '#FFFFFF', // White (light mode)
-        foreground: '#2C2C2C', // Dark gray text
-        accent: '#DE7356', // Accent color
-        card: '#F7F7F8', // Off-white for cards
-        surface: '#FFFFFF', // Pure white for elevated surfaces
-        muted: '#8E8EA0', // Muted text
-        border: '#E5E5E5', // Light border
-        // Dark mode colors (for future implementation)
-        'dark-background': '#212121',
-        'dark-foreground': '#ECECF1',
-        'dark-card': '#1F1F1F',
-        'dark-surface': '#2C2C2C',
-        'dark-border': '#40414F',
+        // Koedoe Design System
+        background: '#1A1A1A', // Koedoe Charcoal
+        foreground: '#E8E2D6', // Koedoe Sand
+        accent: '#B46E3A', // Horn Copper
+        card: '#121212', // Koedoe Horn Black (Softened)
+        surface: '#121212', // Koedoe Horn Black (Softened)
+        muted: '#F7F3EE', // Koedoe Ivory (used for muted text or secondary elements)
+        border: '#2C2C2C', // Slightly lighter charcoal for borders
+        
+        // Specific palette reference
+        'koedoe-charcoal': '#1A1A1A',
+        'koedoe-sand': '#E8E2D6',
+        'koedoe-black': '#000000',
+        'koedoe-ivory': '#F7F3EE',
+        'horn-copper': '#B46E3A',
       },
       fontFamily: {
-        sans: ['Geist', 'System'],
-        mono: ['Geist Mono', 'Courier'],
-        heading: ['ParkinsansBold', 'System'],
+        sans: ['Inter', 'System'],
+        heading: ['InterTight', 'System'],
       },
       fontSize: {
         xs: ['12px', { lineHeight: '16px' }],
@@ -57,10 +58,10 @@ module.exports = {
         full: '9999px',
       },
       boxShadow: {
-        sm: '0 1px 2px 0 rgba(44, 44, 44, 0.05)',
-        DEFAULT: '0 2px 4px 0 rgba(44, 44, 44, 0.08)',
-        md: '0 4px 6px -1px rgba(44, 44, 44, 0.1)',
-        lg: '0 8px 12px -2px rgba(44, 44, 44, 0.12)',
+        sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        DEFAULT: '0 2px 4px 0 rgba(0, 0, 0, 0.08)',
+        md: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+        lg: '0 8px 12px -2px rgba(0, 0, 0, 0.12)',
       },
     },
   },

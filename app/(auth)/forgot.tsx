@@ -1,12 +1,23 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 
 import BrutalistCard from '@/components/BrutalistCard';
 import { supabase } from '@/lib/supabase';
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
+const LOGO = require('../../assets/branding/koedoelogo.png');
 
 type ForgotPasswordForm = {
   email: string;
@@ -51,17 +62,15 @@ export default function ForgotPasswordScreen() {
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          paddingHorizontal: 24,
-          paddingVertical: 48,
-        }}
-      >
-        <View className="mb-8">
-          <Text className="font-semibold text-center text-4xl text-foreground">Afrikaner.ai</Text>
-          <Text className="mt-4 font-normal text-center text-lg text-muted">Herstel wagwoord</Text>
+      <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 48 }}>
+        <View className="items-center mb-8">
+          <Image source={LOGO} style={{ height: 120, width: 220, resizeMode: 'contain' }} className="mb-6" />
+          <Text className="font-heading font-bold text-2xl text-foreground text-center tracking-wide">
+            WELKOM BY KOEDOE
+          </Text>
+          <Text className="mt-2 font-normal text-lg text-accent text-center tracking-widest uppercase">
+            Slim. Sterk. Afrikaans.
+          </Text>
         </View>
 
         <BrutalistCard
@@ -81,7 +90,7 @@ export default function ForgotPasswordScreen() {
             render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
               <View className="mt-4">
                 <TextInput
-                  className="rounded-xl border border-border bg-background px-4 py-3 font-normal text-base text-foreground"
+                  className="rounded-2xl border border-border bg-background px-4 py-4 font-normal text-base text-foreground"
                   placeholder="jou@epos.co.za"
                   placeholderTextColor="#8E8EA0"
                   value={value}

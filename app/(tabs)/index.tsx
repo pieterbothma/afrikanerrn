@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -8,6 +9,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { requestCameraPermission, requestMediaLibraryPermission } from '@/lib/permissions';
@@ -21,20 +23,18 @@ import BrutalistCard from '@/components/BrutalistCard';
 import MenuDrawer from '@/components/MenuDrawer';
 import ImageGenerationModal from '@/components/ImageGenerationModal';
 import ImageEditModal from '@/components/ImageEditModal';
-import { streamAfrikaansMessage, OpenAIChatMessage } from '@/lib/openai';
-import { uploadImageToSupabase } from '@/lib/storage';
+import * as DocumentPicker from 'expo-document-picker';
+import { streamAfrikaansMessage, OpenAIChatMessage, identifyImageSubject, answerQuestionAboutDocument } from '@/lib/openai';
+import { uploadImageToSupabase, uploadDocumentToSupabase } from '@/lib/storage';
 import { checkUsageLimit, logUsage, getTodayUsage, USAGE_LIMITS, getUserTier } from '@/lib/usageLimits';
 import { useChatStore, ChatMessage } from '@/store/chatStore';
 import { useUserStore } from '@/store/userStore';
+import { generateUUID } from '@/lib/utils';
+import { track } from '@/lib/analytics';
 
-const ACCENT = '#DE7356';
-
-const generateUUID = () =>
-  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const random = (Math.random() * 16) | 0;
-    const value = char === 'x' ? random : (random & 0x3) | 0x8;
-    return value.toString(16);
-  });
+const ACCENT = '#B46E3A';
+const LOGO = require('../../assets/branding/koedoelogo.png');
+const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
 
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
@@ -45,12 +45,21 @@ export default function ChatScreen() {
   const [showEditImageModal, setShowEditImageModal] = useState(false);
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
   const [selectedImageForEdit, setSelectedImageForEdit] = useState<string | undefined>();
+  const [isIdentifyProcessing, setIsIdentifyProcessing] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{ uri: string; previewUri: string } | null>(null);
+  const [pendingDocument, setPendingDocument] = useState<{
+    uri: string;
+    localUri: string;
+    name: string;
+    mimeType?: string;
+    size?: number;
+  } | null>(null);
   const isStartingNewChat = useRef(false);
 
   const user = useUserStore((state) => state.user);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight ? useBottomTabBarHeight() : 0;
-  const keyboardOffset = Platform.OS === 'ios' ? tabBarHeight + insets.bottom + 12 : 0;
+  const keyboardOffset = Platform.OS === 'ios' ? tabBarHeight : 0;
 
   const messages = useChatStore((state) => state.messages);
   const addMessage = useChatStore((state) => state.addMessage);
@@ -126,7 +135,7 @@ export default function ChatScreen() {
     }
 
     const trimmed = (promptOverride || input).trim();
-    if (!trimmed) {
+    if (!trimmed && !pendingImage && !pendingDocument) {
       return;
     }
 
@@ -156,10 +165,22 @@ export default function ChatScreen() {
       }
     }
 
+    // Store pending image and document before clearing
+    const imageToSend = pendingImage;
+    const documentToSend = pendingDocument;
+    setPendingImage(null);
+    setPendingDocument(null);
+
     const userMessage: ChatMessage = {
       id: generateUUID(),
       role: 'user',
-      content: trimmed,
+      content: trimmed || '',
+      imageUri: imageToSend?.uri,
+      previewUri: imageToSend?.previewUri,
+      documentUrl: documentToSend?.uri,
+      documentName: documentToSend?.name,
+      documentMimeType: documentToSend?.mimeType,
+      documentSize: documentToSend?.size,
       createdAt: new Date().toISOString(),
       conversationId: conversationId ?? undefined,
     };
@@ -169,7 +190,17 @@ export default function ChatScreen() {
 
     // Auto-name conversation with first user message (trimmed to 60 chars)
     if (isNewConversation && conversationId) {
-      const title = trimmed.length > 60 ? trimmed.substring(0, 60) + '...' : trimmed;
+      const fallbackTitle = imageToSend
+        ? 'Foto gelaai'
+        : documentToSend
+          ? 'Dokument gelaai'
+          : 'Nuwe gesprek';
+      const title =
+        trimmed.length > 0
+          ? trimmed.length > 60
+            ? trimmed.substring(0, 60) + '...'
+            : trimmed
+          : fallbackTitle;
       await updateConversation(conversationId, title);
     }
 
@@ -190,24 +221,58 @@ export default function ChatScreen() {
     addMessage(assistantMessage);
 
     try {
-      const currentMessages = useChatStore.getState().messages;
-      const history: OpenAIChatMessage[] = currentMessages
-        .filter((msg) => msg.id !== assistantMessageId)
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.content && msg.content.length > 0 ? msg.content : msg.imageUri ? '(Beeld gestuur)' : '',
-        }));
+      // If image is present, use Vision API
+      if (imageToSend) {
+        const question = trimmed 
+          ? `Die gebruiker vra: "${trimmed}". Beantwoord hierdie vraag oor die foto.`
+          : 'Beskryf wat jy in hierdie foto sien.';
+        const description = await identifyImageSubject(imageToSend.previewUri || imageToSend.uri, {
+          scenario: 'general',
+          extraInstructions: question,
+        });
 
-      let fullContent = '';
-      for await (const chunk of streamAfrikaansMessage(history, user.tonePreset || 'informeel')) {
-        fullContent += chunk;
-        updateMessage(assistantMessageId, { content: fullContent });
+        updateMessage(assistantMessageId, { content: description });
+        await saveMessageToSupabase({ ...assistantMessage, content: description }, user.id);
+      } else if (documentToSend) {
+        // If document is present, use document analysis API
+        const question = trimmed || 'Gee my \'n opsomming van hierdie dokument.';
+        const answer = await answerQuestionAboutDocument(
+          documentToSend.localUri || documentToSend.uri,
+          documentToSend.name,
+          documentToSend.mimeType,
+          question,
+        );
+
+        updateMessage(assistantMessageId, { content: answer });
+        await saveMessageToSupabase({ ...assistantMessage, content: answer }, user.id);
+      } else {
+        // Regular text chat
+        const currentMessages = useChatStore.getState().messages;
+        const history: OpenAIChatMessage[] = currentMessages
+          .filter((msg) => msg.id !== assistantMessageId)
+          .map((msg) => ({
+            role: msg.role,
+            content:
+              msg.content && msg.content.length > 0
+                ? msg.content
+                : msg.imageUri
+                  ? '(Beeld gestuur)'
+                  : msg.documentUrl
+                    ? '(Dokument gestuur)'
+                    : '',
+          }));
+
+        let fullContent = '';
+        for await (const chunk of streamAfrikaansMessage(history, user.tonePreset || 'informeel')) {
+          fullContent += chunk;
+          updateMessage(assistantMessageId, { content: fullContent });
+        }
+
+        await saveMessageToSupabase({ ...assistantMessage, content: fullContent }, user.id);
       }
-
-      await saveMessageToSupabase({ ...assistantMessage, content: fullContent }, user.id);
     } catch (error) {
       console.error('Kon nie boodskap stuur nie:', error);
-      Alert.alert('Oeps!', 'Afrikaner.ai kon nie reageer nie. Probeer asseblief weer.');
+      Alert.alert('Oeps!', 'Koedoe kon nie reageer nie. Probeer asseblief weer.');
       updateMessage(assistantMessageId, {
         content: 'Oeps! Ek kon nie reageer nie. Probeer asseblief weer.',
       });
@@ -242,6 +307,8 @@ export default function ChatScreen() {
     
     // Clear input field
     setInput('');
+    setPendingImage(null);
+    setPendingDocument(null);
     
     // Scroll to top immediately
     requestAnimationFrame(() => {
@@ -262,11 +329,13 @@ export default function ChatScreen() {
   };
 
   const handleTakePhoto = async () => {
+    console.log('[ChatScreen] handleTakePhoto called');
     if (!user?.id) {
       Alert.alert('Meld aan', "Jy moet aangemeld wees om 'n foto te maak.");
       return;
     }
 
+    track('camera_capture_requested');
     let conversationId = currentConversationId;
     const isNewConversation = !conversationId;
     if (!conversationId) {
@@ -277,49 +346,59 @@ export default function ChatScreen() {
     }
 
     try {
+      console.log('[ChatScreen] Requesting camera permission...');
       const hasPermission = await requestCameraPermission();
       if (!hasPermission) {
+        console.log('[ChatScreen] Camera permission denied');
         return;
       }
 
+      console.log('[ChatScreen] Opening camera...');
+      
+      // Small delay to ensure app is ready after modal closes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('[ChatScreen] Calling launchCameraAsync...');
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: IMAGE_MEDIA_TYPES,
         quality: 0.7,
         allowsEditing: true,
       });
+      
+      console.log('[ChatScreen] Camera result received:', result.canceled ? 'canceled' : 'success');
+
+      console.log('[ChatScreen] Camera result:', { 
+        canceled: result.canceled, 
+        assetsCount: result.assets?.length || 0 
+      });
 
       if (result.canceled || !result.assets || result.assets.length === 0) {
+        console.log('[ChatScreen] Camera was canceled or no assets');
         return;
       }
 
       const asset = result.assets[0];
-      const messageId = generateUUID();
+      const previewUri = asset.uri;
 
-      const uploadedUrl = await uploadImageToSupabase(asset.uri, user.id, messageId);
-      const imageMessage: ChatMessage = {
-        id: messageId,
-        role: 'user',
-        content: '(Foto gemaak)',
-        imageUri: uploadedUrl || asset.uri,
-        createdAt: new Date().toISOString(),
-        conversationId: conversationId ?? undefined,
-      };
+      const uploadedUrl = await uploadImageToSupabase(asset.uri, user.id, generateUUID());
+      const finalImageUri = uploadedUrl || previewUri;
 
-      addMessage(imageMessage);
-      await saveMessageToSupabase(imageMessage, user.id);
-      
-      // Log usage (photo taking doesn't count as image_generate, but we could add a separate type if needed)
-      // For now, we'll just log the message as chat usage
+      // Store image in pending state instead of adding as message
+      setPendingImage({
+        uri: finalImageUri,
+        previewUri: previewUri,
+      });
 
-      // Auto-name conversation with photo
-      if (isNewConversation && conversationId) {
-        await updateConversation(conversationId, 'Foto gemaak');
-      }
-
-      flatListRef.current?.scrollToEnd({ animated: true });
-    } catch (error) {
-      console.error('Kon nie foto maak nie:', error);
-      Alert.alert('Oeps!', "Kon nie die foto maak nie. Probeer asseblief weer.");
+      track('camera_capture_completed');
+    } catch (error: any) {
+      console.error('[ChatScreen] Error taking photo:', error);
+      console.error('[ChatScreen] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+      });
+      track('camera_capture_failed');
+      Alert.alert('Oeps!', `Kon nie die foto maak nie: ${error?.message || 'Onbekende fout'}. Probeer asseblief weer.`);
     }
   };
 
@@ -329,6 +408,7 @@ export default function ChatScreen() {
       return;
     }
 
+    track('image_edit_picker_requested');
     // Check usage limit before opening image picker
     const usageCheck = await checkUsageLimit(user.id, 'image_edit');
     if (!usageCheck.allowed) {
@@ -358,7 +438,7 @@ export default function ChatScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: IMAGE_MEDIA_TYPES,
         quality: 0.7,
         allowsMultipleSelection: false,
         allowsEditing: true,
@@ -369,8 +449,10 @@ export default function ChatScreen() {
       }
 
       const asset = result.assets[0];
+      const previewUri = asset.uri;
       setSelectedImageForEdit(asset.uri);
       setShowEditImageModal(true);
+      track('image_edit_picker_completed');
 
       // Auto-name conversation with photo edit
       if (isNewConversation && conversationId) {
@@ -382,9 +464,77 @@ export default function ChatScreen() {
     }
   };
 
-  const handleAddFiles = () => {
-    // Placeholder for future file upload and analysis feature
-    Alert.alert('Kom binnekort', 'Lêer oplaai en analise funksies sal binnekort beskikbaar wees.');
+  const handleAddFiles = async () => {
+    console.log('[ChatScreen] handleAddFiles called');
+    if (!user?.id) {
+      Alert.alert('Meld aan', "Jy moet aangemeld wees om 'n dokument op te laai.");
+      return;
+    }
+
+    track('document_upload_requested');
+
+    let conversationId = currentConversationId;
+    const isNewConversation = !conversationId;
+    if (!conversationId) {
+      conversationId = await createConversation(user.id);
+      if (conversationId) {
+        setCurrentConversationId(conversationId);
+      }
+    }
+
+    try {
+      console.log('[ChatScreen] Opening document picker...');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/json', 'text/csv', 'text/markdown'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      console.log('[ChatScreen] Document picker result:', { canceled: result.canceled, assetsCount: result.assets?.length });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        console.log('[ChatScreen] Document picker was canceled or no assets');
+        return;
+      }
+
+      const asset = result.assets[0];
+      console.log('[ChatScreen] Document selected, uploading to Supabase...', { name: asset.name, size: asset.size, mimeType: asset.mimeType });
+
+      const uploadedUrl = await uploadDocumentToSupabase(
+        asset.uri,
+        user.id,
+        generateUUID(),
+        asset.name,
+        asset.mimeType || 'application/octet-stream'
+      );
+      if (!uploadedUrl) {
+        Alert.alert('Oeps!', 'Kon nie die dokument oplaai nie. Probeer asseblief weer.');
+        track('document_upload_failed', { reason: 'upload_failed' });
+        return;
+      }
+      const finalDocumentUri = uploadedUrl;
+      console.log('[ChatScreen] Document uploaded, setting pending document');
+
+      // Store document in pending state instead of adding as message
+      setPendingDocument({
+        uri: finalDocumentUri,
+        localUri: asset.uri,
+        name: asset.name ?? 'dokument',
+        mimeType: asset.mimeType,
+        size: asset.size,
+      });
+
+      // Auto-name conversation with document if new
+      if (isNewConversation && conversationId) {
+        await updateConversation(conversationId, 'Dokument gelaai');
+      }
+
+      flatListRef.current?.scrollToEnd({ animated: true });
+      track('document_upload_completed');
+    } catch (error: any) {
+      console.error('[ChatScreen] Kon nie dokument laai nie:', error);
+      Alert.alert('Oeps!', 'Kon nie die dokument laai nie. Probeer asseblief weer.');
+      track('document_upload_failed', { error: error?.message || 'Unknown error' });
+    }
   };
 
   const handleCreateImage = async () => {
@@ -392,6 +542,7 @@ export default function ChatScreen() {
       return;
     }
 
+    track('image_generation_modal_open_requested');
     // Check usage limit before opening modal
     const usageCheck = await checkUsageLimit(user.id, 'image_generate');
     if (!usageCheck.allowed) {
@@ -406,36 +557,71 @@ export default function ChatScreen() {
     await checkAndWarnUsage('image_generate');
 
     setShowCreateImageModal(true);
+    track('image_generation_modal_opened');
   };
 
-  const handleEditImage = async () => {
+  const handleIdentifyPhoto = async () => {
+    console.log('[ChatScreen] handleIdentifyPhoto called');
     if (!user?.id) {
+      Alert.alert('Meld aan', "Jy moet aangemeld wees om 'n foto te laai.");
       return;
     }
 
-    // Check usage limit before opening edit modal
-    const usageCheck = await checkUsageLimit(user.id, 'image_edit');
-    if (!usageCheck.allowed) {
-      Alert.alert(
-        'Daglimiet bereik',
-        `Jy het jou daglimiet van ${usageCheck.limit} beeld wysigings bereik. Probeer môre weer of oorweeg om op te gradeer na premium.`,
-      );
-      return;
-    }
-    
-    // Warn if nearing limit (but still allow)
-    await checkAndWarnUsage('image_edit');
+    track('identify_photo_requested');
 
-    const lastImageMessage = [...messages].reverse().find((msg) => msg.imageUri);
-    if (lastImageMessage?.imageUri) {
-      setSelectedImageForEdit(lastImageMessage.imageUri);
-      setShowEditImageModal(true);
-    } else {
-      Alert.alert('Geen beeld', "Kies eers 'n beeld om te wysig.");
+    let conversationId = currentConversationId;
+    const isNewConversation = !conversationId;
+
+    try {
+      console.log('[ChatScreen] Requesting media library permission...');
+      const hasPermission = await requestMediaLibraryPermission();
+      if (!hasPermission) {
+        console.log('[ChatScreen] Media library permission denied');
+        return;
+      }
+
+      console.log('[ChatScreen] Launching image library...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: IMAGE_MEDIA_TYPES,
+        quality: 0.7,
+        allowsMultipleSelection: false,
+      });
+
+      console.log('[ChatScreen] Image library result:', { canceled: result.canceled, assetsCount: result.assets?.length });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        console.log('[ChatScreen] Image library was canceled or no assets');
+        return;
+      }
+
+      const asset = result.assets[0];
+      const previewUri = asset.uri;
+      console.log('[ChatScreen] Image selected, uploading to Supabase...');
+
+      const uploadedUrl = await uploadImageToSupabase(asset.uri, user.id, generateUUID());
+      const finalImageUri = uploadedUrl || previewUri;
+      console.log('[ChatScreen] Image uploaded, setting pending image');
+
+      // Store image in pending state instead of adding as message
+      setPendingImage({
+        uri: finalImageUri,
+        previewUri: previewUri,
+      });
+
+      // Auto-name conversation with photo if new
+      if (isNewConversation && conversationId) {
+        await updateConversation(conversationId, 'Foto gelaai');
+      }
+
+      flatListRef.current?.scrollToEnd({ animated: true });
+      track('identify_photo_completed');
+    } catch (error: any) {
+      console.error('[ChatScreen] Kon nie foto laai nie:', error);
+      Alert.alert('Oeps!', 'Kon nie die foto laai nie. Probeer asseblief weer.');
+      track('identify_photo_failed', { error: error?.message || 'Unknown error' });
     }
   };
 
-  const handleImageGenerated = async (imageUrl: string) => {
+  const handleImageGenerated = async (imageUri: string, previewUri: string) => {
     if (!user?.id) {
       return;
     }
@@ -443,6 +629,7 @@ export default function ChatScreen() {
     try {
       // Log usage after successful image generation
       await logUsage(user.id, 'image_generate');
+      track('image_generation_completed');
 
       let conversationId = currentConversationId;
       const isNewConversation = !conversationId;
@@ -453,20 +640,13 @@ export default function ChatScreen() {
         }
       }
 
-      const messageId = generateUUID();
-      const imageMessage: ChatMessage = {
-        id: messageId,
-        role: 'user',
-        content: '(AI-beeld geskep)',
-        imageUri: imageUrl,
-        createdAt: new Date().toISOString(),
-        conversationId: conversationId ?? undefined,
-      };
+      // Store image in pending state instead of adding as message
+      setPendingImage({
+        uri: imageUri,
+        previewUri: previewUri,
+      });
 
-      addMessage(imageMessage);
-      await saveMessageToSupabase(imageMessage, user.id);
-
-      // Auto-name conversation with AI image
+      // Auto-name conversation with AI image if new
       if (isNewConversation && conversationId) {
         await updateConversation(conversationId, 'AI-beeld geskep');
       }
@@ -474,11 +654,12 @@ export default function ChatScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     } catch (error) {
       console.error('Kon nie beeld generasie verwerk nie:', error);
-      // Don't show alert here - error was already shown in modal
+      track('image_generation_failed');
+      Alert.alert('Oeps!', 'Kon nie beeld generasie verwerk nie. Probeer asseblief weer.');
     }
   };
 
-  const handleImageEdited = async (imageUrl: string) => {
+  const handleImageEdited = async (imageUri: string, previewUri: string) => {
     if (!user?.id) {
       return;
     }
@@ -486,6 +667,7 @@ export default function ChatScreen() {
     try {
       // Log usage after successful image edit
       await logUsage(user.id, 'image_edit');
+      track('image_edit_completed');
 
       let conversationId = currentConversationId;
       const isNewConversation = !conversationId;
@@ -496,20 +678,13 @@ export default function ChatScreen() {
         }
       }
 
-      const messageId = generateUUID();
-      const imageMessage: ChatMessage = {
-        id: messageId,
-        role: 'user',
-        content: '(Beeld gewysig)',
-        imageUri: imageUrl,
-        createdAt: new Date().toISOString(),
-        conversationId: conversationId ?? undefined,
-      };
+      // Store image in pending state instead of adding as message
+      setPendingImage({
+        uri: imageUri,
+        previewUri: previewUri,
+      });
 
-      addMessage(imageMessage);
-      await saveMessageToSupabase(imageMessage, user.id);
-
-      // Auto-name conversation with edited image
+      // Auto-name conversation with edited image if new
       if (isNewConversation && conversationId) {
         await updateConversation(conversationId, 'Beeld gewysig');
       }
@@ -517,15 +692,16 @@ export default function ChatScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     } catch (error) {
       console.error('Kon nie beeld wysiging verwerk nie:', error);
-      // Don't show alert here - error was already shown in modal
+      track('image_edit_failed');
+      Alert.alert('Oeps!', 'Kon nie beeld wysiging verwerk nie. Probeer asseblief weer.');
     }
   };
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={{ flex: 1, backgroundColor: '#1A1A1A' }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={keyboardOffset}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
     >
       <View className="flex-1 bg-background">
         {/* Header Bar */}
@@ -534,10 +710,19 @@ export default function ChatScreen() {
           style={{ paddingTop: Math.max(insets.top, 16) }}
         >
           <TouchableOpacity onPress={() => setShowMenuDrawer(true)} className="p-2">
-            <Ionicons name="menu" size={24} color="#2C2C2C" />
+            <Ionicons name="menu" size={24} color="#E8E2D6" />
           </TouchableOpacity>
+          
+          {/* Logo - Centered */}
+          <View className="flex-1 items-center justify-center px-4">
+            <Image
+              source={LOGO}
+              style={{ height: 56, width: 200, resizeMode: 'contain' }}
+            />
+          </View>
+          
           <TouchableOpacity onPress={handleNewChat} className="p-2">
-            <Ionicons name="create-outline" size={24} color="#2C2C2C" />
+            <Ionicons name="create-outline" size={24} color="#E8E2D6" />
           </TouchableOpacity>
         </View>
 
@@ -609,6 +794,13 @@ export default function ChatScreen() {
           refreshControl={<RefreshControl tintColor={ACCENT} refreshing={isRefreshing} onRefresh={handleRefresh} />}
         />
 
+        {isSending && (
+          <View className="flex-row items-center justify-center py-2">
+            <ActivityIndicator color={ACCENT} size="small" />
+            <Text className="ml-2 text-sm text-muted">Koedoe dink…</Text>
+          </View>
+        )}
+
         <InputBar
           value={input}
           onChangeText={setInput}
@@ -617,7 +809,12 @@ export default function ChatScreen() {
           onEditPhoto={handleEditPhoto}
           onAddFiles={handleAddFiles}
           onCreateImage={handleCreateImage}
+          onIdentifyPhoto={handleIdentifyPhoto}
           isSending={isSending}
+          pendingImage={pendingImage}
+          onClearPendingImage={() => setPendingImage(null)}
+          pendingDocument={pendingDocument}
+          onClearPendingDocument={() => setPendingDocument(null)}
         />
 
         <MenuDrawer visible={showMenuDrawer} onClose={() => setShowMenuDrawer(false)} />

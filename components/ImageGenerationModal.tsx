@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyboard, ScrollView } from 'react-native';
+import { Modal, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, Keyboard, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { generateImage } from '@/lib/openai';
 import { uploadImageToSupabase } from '@/lib/storage';
+import { track } from '@/lib/analytics';
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
 
 const EXAMPLE_PROMPTS = [
   "n sononder in die Karoo met bergs op die agtergrond",
@@ -14,10 +15,23 @@ const EXAMPLE_PROMPTS = [
   "Table Mountain met die stad op die voorgrond",
 ];
 
+type StylePreset = {
+  id: string;
+  label: string;
+  prefix: string;
+};
+
+const STYLE_PRESETS: StylePreset[] = [
+  { id: 'realistic', label: 'Realisties', prefix: 'Realistiese foto van' },
+  { id: 'artistic', label: 'Artistiek', prefix: 'Artistieke illustrasie van' },
+  { id: 'abstract', label: 'Abstrak', prefix: 'Abstrakte visuele voorstelling van' },
+  { id: 'sketch', label: 'Skets', prefix: 'Skets-styl tekening van' },
+];
+
 type ImageGenerationModalProps = {
   visible: boolean;
   onClose: () => void;
-  onImageGenerated: (imageUrl: string) => void;
+  onImageGenerated: (imageUri: string, previewUri: string) => void;
   userId: string;
   messageId: string;
 };
@@ -30,8 +44,11 @@ export default function ImageGenerationModal({
   messageId,
 }: ImageGenerationModalProps) {
   const [prompt, setPrompt] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState<StylePreset | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [generatedImageUri, setGeneratedImageUri] = useState<string | null>(null);
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   // Auto-focus input when modal opens
@@ -42,7 +59,10 @@ export default function ImageGenerationModal({
         inputRef.current?.focus();
       }, 300);
       setPrompt('');
+      setSelectedStyle(null);
       setStatusMessage('');
+      setGeneratedImageUri(null);
+      setPreviewImageUri(null);
     }
   }, [visible]);
 
@@ -58,8 +78,21 @@ export default function ImageGenerationModal({
     setStatusMessage('Skep beeld...');
 
     try {
+      // Apply style preset if selected
+      const finalPrompt = selectedStyle 
+        ? `${selectedStyle.prefix} ${trimmedPrompt}`
+        : trimmedPrompt;
+
+      track('image_generation_started', { 
+        hasStylePreset: !!selectedStyle,
+        stylePreset: selectedStyle?.id 
+      });
+
       setStatusMessage('Skep beeld met AI...');
-      const imageUrl = await generateImage(trimmedPrompt);
+      const imageUrl = await generateImage(finalPrompt, {
+        thinkingLevel: 'low',
+        mediaResolution: 'media_resolution_high',
+      });
       
       if (!imageUrl) {
         throw new Error('Geen beeld ontvang nie.');
@@ -67,19 +100,22 @@ export default function ImageGenerationModal({
 
       setStatusMessage('Laai beeld op...');
       const uploadedUrl = await uploadImageToSupabase(imageUrl, userId, messageId);
+      const finalImageUri = uploadedUrl || imageUrl;
       
-      setStatusMessage('Voltooi!');
-      onImageGenerated(uploadedUrl || imageUrl);
+      // Show preview instead of immediately closing
+      setGeneratedImageUri(finalImageUri);
+      setPreviewImageUri(imageUrl); // Use local file as preview
+      setStatusMessage('');
       setPrompt('');
       
-      // Small delay to show success message
-      setTimeout(() => {
-        onClose();
-        setStatusMessage('');
-      }, 500);
+      track('image_generation_preview_shown');
     } catch (error: any) {
       console.error('Beeld generasie gefaal:', error);
       setStatusMessage('');
+      
+      track('image_generation_error', { 
+        error: error?.message || 'Unknown error' 
+      });
       
       // More user-friendly error messages
       let errorMessage = 'Kon nie beeld skep nie. Probeer asseblief weer.';
@@ -104,6 +140,29 @@ export default function ImageGenerationModal({
     inputRef.current?.focus();
   };
 
+  const handleAccept = () => {
+    if (generatedImageUri && previewImageUri) {
+      track('image_generation_accepted');
+      onImageGenerated(generatedImageUri, previewImageUri);
+      onClose();
+    }
+  };
+
+  const handleRetry = () => {
+    track('image_generation_retry');
+    setGeneratedImageUri(null);
+    setPreviewImageUri(null);
+    setPrompt('');
+    setSelectedStyle(null);
+  };
+
+  const handleCancel = () => {
+    track('image_generation_cancelled', {
+      hasGeneratedImage: !!generatedImageUri,
+    });
+    onClose();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 bg-black/50 justify-end">
@@ -124,11 +183,11 @@ export default function ImageGenerationModal({
               </Text>
             </View>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={handleCancel}
               disabled={isGenerating}
               className="p-2"
             >
-              <Ionicons name="close" size={24} color="#2C2C2C" />
+              <Ionicons name="close" size={24} color="#E8E2D6" />
             </TouchableOpacity>
           </View>
 
@@ -154,6 +213,42 @@ export default function ImageGenerationModal({
                 />
               </View>
 
+              {/* Style Presets */}
+              {!isGenerating && (
+                <View className="mb-4">
+                  <Text className="mb-3 font-medium text-sm text-muted">
+                    Styl:
+                  </Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {STYLE_PRESETS.map((style) => (
+                      <TouchableOpacity
+                        key={style.id}
+                        onPress={() => {
+                          setSelectedStyle(selectedStyle?.id === style.id ? null : style);
+                          track('image_generation_style_selected', { styleId: style.id });
+                        }}
+                        className={`rounded-lg border px-3 py-2 ${
+                          selectedStyle?.id === style.id
+                            ? 'bg-accent border-accent'
+                            : 'bg-card border-border'
+                        }`}
+                        activeOpacity={0.7}
+                      >
+                        <Text 
+                          className={`font-normal text-xs ${
+                            selectedStyle?.id === style.id
+                              ? 'text-white'
+                              : 'text-foreground'
+                          }`}
+                        >
+                          {style.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
               {/* Example Prompts */}
               {!prompt.trim() && !isGenerating && (
                 <View className="mb-4">
@@ -177,6 +272,41 @@ export default function ImageGenerationModal({
                 </View>
               )}
 
+              {/* Generated Image Preview */}
+              {generatedImageUri && previewImageUri ? (
+                <View className="mb-4">
+                  <View className="rounded-xl overflow-hidden border-2 border-border bg-card">
+                    <Image
+                      source={{ uri: previewImageUri }}
+                      className="w-full"
+                      style={{ height: 300, maxHeight: 400 }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <View className="mt-4 flex-row gap-3">
+                    <TouchableOpacity
+                      className="flex-1 rounded-xl bg-accent px-6 py-4 flex-row items-center justify-center gap-2"
+                      onPress={handleAccept}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      <Text className="font-semibold text-center text-base text-white">
+                        Gebruik beeld
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="rounded-xl bg-card border-2 border-border px-6 py-4"
+                      onPress={handleRetry}
+                      activeOpacity={0.8}
+                    >
+                      <Text className="font-medium text-center text-base text-foreground">
+                        Probeer weer
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
               {/* Status Message */}
               {statusMessage ? (
                 <View className="mb-4 flex-row items-center gap-2 rounded-lg bg-card border border-border px-4 py-3">
@@ -186,44 +316,46 @@ export default function ImageGenerationModal({
               ) : null}
 
               {/* Action Buttons */}
-              <View className="flex-row gap-3">
-                <TouchableOpacity
-                  className={`flex-1 rounded-xl px-6 py-4 flex-row items-center justify-center gap-2 ${
-                    isGenerating || !prompt.trim() 
-                      ? 'bg-accent/50' 
-                      : 'bg-accent'
-                  }`}
-                  onPress={handleGenerate}
-                  disabled={isGenerating || !prompt.trim()}
-                  activeOpacity={0.8}
-                >
-                  {isGenerating ? (
-                    <>
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                      <Text className="font-semibold text-center text-base text-white">
-                        Skep beeld...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-                      <Text className="font-semibold text-center text-base text-white">
-                        Skep beeld
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="rounded-xl bg-card border-2 border-border px-6 py-4"
-                  onPress={onClose}
-                  disabled={isGenerating}
-                  activeOpacity={0.8}
-                >
-                  <Text className="font-medium text-center text-base text-foreground">
-                    Kanselleer
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              {!generatedImageUri && (
+                <View className="flex-row gap-3">
+                  <TouchableOpacity
+                    className={`flex-1 rounded-xl px-6 py-4 flex-row items-center justify-center gap-2 ${
+                      isGenerating || !prompt.trim() 
+                        ? 'bg-accent/50' 
+                        : 'bg-accent'
+                    }`}
+                    onPress={handleGenerate}
+                    disabled={isGenerating || !prompt.trim()}
+                    activeOpacity={0.8}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                        <Text className="font-semibold text-center text-base text-white">
+                          Skep beeld...
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+                        <Text className="font-semibold text-center text-base text-white">
+                          Skep beeld
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    className="rounded-xl bg-card border-2 border-border px-6 py-4"
+                    onPress={handleCancel}
+                    disabled={isGenerating}
+                    activeOpacity={0.8}
+                  >
+                    <Text className="font-medium text-center text-base text-foreground">
+                      Kanselleer
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </ScrollView>
         </View>

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import BrutalistCard from '@/components/BrutalistCard';
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
 
 const CATEGORIES = [
   { id: 'small-business', name: 'Klein Besigheid', icon: 'business' },

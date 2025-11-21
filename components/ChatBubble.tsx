@@ -1,17 +1,18 @@
-import { Image, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { Image, Text, TouchableOpacity, View, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { ChatMessage } from '@/store/chatStore';
 import { useChatStore } from '@/store/chatStore';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
+import { formatBytes } from '@/lib/utils';
 import MarkdownMessage from './MarkdownMessage';
 
 type ChatBubbleProps = {
   message: ChatMessage;
 };
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
 
 const formatTimestamp = (iso: string) => {
   try {
@@ -85,6 +86,25 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
     );
   };
 
+  const imageSource = message.previewUri || message.imageUri;
+  const hasDocument = message.documentUrl && message.documentName;
+
+  const handleDocumentPress = async () => {
+    if (message.documentUrl) {
+      try {
+        const canOpen = await Linking.canOpenURL(message.documentUrl);
+        if (canOpen) {
+          await Linking.openURL(message.documentUrl);
+        } else {
+          Alert.alert('Oeps!', 'Kon nie dokument oopmaak nie.');
+        }
+      } catch (error) {
+        console.error('Kon nie dokument oopmaak nie:', error);
+        Alert.alert('Oeps!', 'Kon nie dokument oopmaak nie.');
+      }
+    }
+  };
+
   return (
     <TouchableOpacity
       className={`w-full ${isUser ? 'items-end' : 'items-start'}`}
@@ -95,9 +115,39 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
         className={`max-w-[85%] rounded-2xl px-4 py-3 ${
           isUser ? 'bg-accent' : 'bg-card border border-border'
         }`}
+        style={!isUser ? { backgroundColor: '#121212' } : undefined}
       >
-        {message.imageUri ? (
-          <Image source={{ uri: message.imageUri }} className="mb-3 h-40 w-full rounded-lg" />
+        {imageSource ? (
+          <View className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+            <Image
+              source={{ uri: imageSource }}
+              className="w-full"
+              style={{ height: 300, maxHeight: 400 }}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
+        {hasDocument ? (
+          <TouchableOpacity
+            className="mb-3 rounded-xl border border-white/10 bg-black/20 p-4 flex-row items-center"
+            onPress={handleDocumentPress}
+            activeOpacity={0.7}
+          >
+            <View className="w-12 h-12 rounded-xl bg-accent/20 items-center justify-center mr-3">
+              <Ionicons name="document-text" size={24} color={isUser ? '#FFFFFF' : ACCENT} />
+            </View>
+            <View className="flex-1">
+              <Text className={`font-semibold text-base ${isUser ? 'text-white' : 'text-foreground'}`} numberOfLines={1}>
+                {message.documentName}
+              </Text>
+              {message.documentSize && (
+                <Text className={`text-xs ${isUser ? 'text-white/70' : 'text-muted'} mt-0.5`}>
+                  {formatBytes(message.documentSize)}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="open-outline" size={20} color={isUser ? '#FFFFFF' : ACCENT} />
+          </TouchableOpacity>
         ) : null}
         {message.content.length > 0 ? <MarkdownMessage content={message.content} isUser={isUser} /> : null}
         {(message.isFavorite || message.isPinned) && (
@@ -117,4 +167,3 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
     </TouchableOpacity>
   );
 }
-

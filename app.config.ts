@@ -9,7 +9,7 @@ try {
   // Silently handle missing .env files
 }
 
-const APP_NAME = "Afrikaner.ai";
+const APP_NAME = "Koedoe";
 const APP_SLUG = "afrikanerai";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
@@ -20,30 +20,30 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "dark",
   newArchEnabled: true,
   scheme: "afrikanerai",
   splash: {
     image: "./assets/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#1A1A1A",
   },
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.pieterbothma2.afrikanerai",
     infoPlist: {
       NSCameraUsageDescription:
-        "Afrikaner.ai benodig toegang tot jou kamera om foto's te neem vir gesprekke.",
+        "Koedoe benodig toegang tot jou kamera om foto's te neem vir gesprekke.",
       NSPhotoLibraryUsageDescription:
-        "Afrikaner.ai benodig toegang tot jou foto biblioteek om beelde te kies vir gesprekke.",
+        "Koedoe benodig toegang tot jou foto biblioteek om beelde te kies vir gesprekke.",
       NSPhotoLibraryAddUsageDescription:
-        "Afrikaner.ai benodig toegang om beelde te stoor na jou foto biblioteek.",
+        "Koedoe benodig toegang om beelde te stoor na jou foto biblioteek.",
     },
   },
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
-      backgroundColor: "#ffffff",
+      backgroundColor: "#1A1A1A",
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,

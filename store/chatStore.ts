@@ -8,6 +8,11 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   imageUri?: string;
+  previewUri?: string;
+  documentUrl?: string;
+  documentName?: string;
+  documentMimeType?: string;
+  documentSize?: number;
   createdAt: string;
   isFavorite?: boolean;
   isPinned?: boolean;
@@ -60,7 +65,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     let query = supabase
       .from('messages')
-      .select('id, role, content, image_url, created_at, is_favorite, is_pinned, tags, conversation_id')
+      .select('id, role, content, image_url, created_at, is_favorite, is_pinned, tags, conversation_id, document_url, document_name, document_mime_type, document_size')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
 
@@ -89,6 +94,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       role: row.role as 'user' | 'assistant',
       content: row.content ?? '',
       imageUri: row.image_url ?? undefined,
+      documentUrl: row.document_url ?? undefined,
+      documentName: row.document_name ?? undefined,
+      documentMimeType: row.document_mime_type ?? undefined,
+      documentSize: row.document_size ?? undefined,
       createdAt: row.created_at ?? new Date().toISOString(),
       isFavorite: row.is_favorite ?? false,
       isPinned: row.is_pinned ?? false,
@@ -100,24 +109,64 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     await cacheMessages(userId, mapped, conversationId);
   },
   saveMessageToSupabase: async (message, userId) => {
-    const currentMessages = get().messages;
-    const updatedMessages = [...currentMessages, message];
-    await cacheMessages(userId, updatedMessages, message.conversationId);
+    const sanitizedMessage = { ...message };
+    delete sanitizedMessage.previewUri;
+
+    const sanitizedExisting = get().messages.map((msg) => {
+      const clone = { ...msg };
+      delete clone.previewUri;
+      return clone;
+    });
+
+    const updatedMessages = [...sanitizedExisting, sanitizedMessage];
+    await cacheMessages(userId, updatedMessages, sanitizedMessage.conversationId);
+
+    // Verify and refresh Supabase session
+    let { data: sessionData } = await supabase.auth.getSession();
+    let authUserId = sessionData?.session?.user?.id;
+    
+    // If no session, try to refresh it
+    if (!authUserId) {
+      console.warn('[RLS Debug] Geen sessie, probeer refresh...');
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      sessionData = refreshData;
+      authUserId = refreshData?.session?.user?.id;
+    }
+    
+    if (!authUserId) {
+      console.error('[RLS Debug] Geen Supabase sessie gevind - gebruiker nie geauthentiseer nie');
+      throw new Error('Jy moet aangemeld wees om boodskappe te stoor. Meld asseblief weer aan.');
+    }
+    
+    if (authUserId !== userId) {
+      console.error(`[RLS Debug] Sessie mismatch: auth.uid()=${authUserId}, userId=${userId}`);
+      throw new Error('Gebruiker ID stem nie ooreen met sessie nie.');
+    }
+
+    console.log(`[RLS Debug] Stoor boodskap vir gebruiker: ${userId.substring(0, 8)}...`);
 
     const { error } = await supabase.from('messages').insert({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      image_url: message.imageUri ?? null,
-      created_at: message.createdAt,
-      is_favorite: message.isFavorite ?? false,
-      is_pinned: message.isPinned ?? false,
-      tags: message.tags ?? [],
-      conversation_id: message.conversationId ?? null,
+      id: sanitizedMessage.id,
+      user_id: userId, // Critical: Must include user_id for RLS policy
+      role: sanitizedMessage.role,
+      content: sanitizedMessage.content,
+      image_url: sanitizedMessage.imageUri ?? null,
+      document_url: sanitizedMessage.documentUrl ?? null,
+      document_name: sanitizedMessage.documentName ?? null,
+      document_mime_type: sanitizedMessage.documentMimeType ?? null,
+      document_size: sanitizedMessage.documentSize ?? null,
+      created_at: sanitizedMessage.createdAt,
+      is_favorite: sanitizedMessage.isFavorite ?? false,
+      is_pinned: sanitizedMessage.isPinned ?? false,
+      tags: sanitizedMessage.tags ?? [],
+      conversation_id: sanitizedMessage.conversationId ?? null,
     });
 
     if (error) {
       console.error('Kon nie boodskap stoor nie:', error.message);
+      console.error('[RLS Debug] Volledige fout:', JSON.stringify(error, null, 2));
+    } else {
+      console.log('[RLS Debug] Boodskap suksesvol gestoor');
     }
   },
   loadConversations: async (userId: string) => {
@@ -148,9 +197,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ conversations: mapped });
   },
   createConversation: async (userId: string, title?: string) => {
+    // Verify and refresh Supabase session
+    let { data: sessionData } = await supabase.auth.getSession();
+    let authUserId = sessionData?.session?.user?.id;
+    
+    // If no session, try to refresh it
+    if (!authUserId) {
+      console.warn('[RLS Debug] Geen sessie vir gesprek, probeer refresh...');
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      sessionData = refreshData;
+      authUserId = refreshData?.session?.user?.id;
+    }
+    
+    if (!authUserId) {
+      console.error('[RLS Debug] Geen Supabase sessie vir gesprek skep');
+      throw new Error('Jy moet aangemeld wees om gesprekke te skep. Meld asseblief weer aan.');
+    }
+    
+    if (authUserId !== userId) {
+      console.error(`[RLS Debug] Gesprek sessie mismatch: auth.uid()=${authUserId}, userId=${userId}`);
+      throw new Error('Gebruiker ID stem nie ooreen met sessie nie.');
+    }
+
     const { data, error } = await supabase
       .from('conversations')
       .insert({
+        user_id: userId, // Critical: Must include user_id for RLS policy
         title: title ?? null,
       })
       .select('id')
@@ -158,6 +230,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     if (error) {
       console.error('Kon nie gesprek skep nie:', error.message);
+      console.error('[RLS Debug] Volledige gesprek fout:', JSON.stringify(error, null, 2));
       return null;
     }
 

@@ -12,8 +12,10 @@ import { useUserStore } from '@/store/userStore';
 import { useChatStore } from '@/store/chatStore';
 import { getTodayUsage, USAGE_LIMITS, getUserTier } from '@/lib/usageLimits';
 import { getSubscriptionTier, SubscriptionTier } from '@/lib/revenuecat';
+import { useAppStore } from '@/store/appStore';
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
+const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
 
 type TonePreset = 'formeel' | 'informeel' | 'vriendelik';
 
@@ -21,6 +23,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const user = useUserStore((state) => state.user);
   const setUser = useUserStore((state) => state.setUser);
+  const resetOnboardingFlag = useAppStore((state) => state.resetOnboardingFlag);
   const conversations = useChatStore((state) => state.conversations);
   const messages = useChatStore((state) => state.messages);
   
@@ -143,7 +146,7 @@ export default function SettingsScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: IMAGE_MEDIA_TYPES,
         quality: 0.8,
         allowsMultipleSelection: false,
         allowsEditing: true,
@@ -183,6 +186,24 @@ export default function SettingsScreen() {
     router.replace('/(auth)/login');
   };
 
+  const handleResetOnboarding = () => {
+    Alert.alert(
+      'Herbegin onboarding?',
+      'Ons sal die verwelkomingsgids weer wys wanneer jy die app volgende keer oopmaak.',
+      [
+        { text: 'Kanselleer', style: 'cancel' },
+        {
+          text: 'Herstel',
+          style: 'destructive',
+          onPress: async () => {
+            await resetOnboardingFlag();
+            Alert.alert('Gereed!', 'Onboarding sal weer vertoon word wanneer jy weer aanmeld.');
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View className="flex-1 bg-background">
       <ScrollView 
@@ -191,7 +212,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={true}
       >
       <View className="rounded-xl bg-card p-6 border border-border">
-        <Text className="font-semibold text-3xl text-foreground">Afrikaner.ai</Text>
+        <Text className="font-semibold text-3xl text-foreground">Koedoe</Text>
         <Text className="mt-2 font-normal text-sm text-muted">Jou profiel</Text>
         <View className="mt-4 flex-row items-center gap-4">
           <TouchableOpacity onPress={handlePickAvatar} className="rounded-full border-2 border-border overflow-hidden">
@@ -227,7 +248,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <BrutalistCard title="Taaltoon" description="Kies hoe jy wil dat Afrikaner.ai met jou praat.">
+      <BrutalistCard title="Taaltoon" description="Kies hoe jy wil dat Koedoe met jou praat.">
         <View className="mt-4 flex-row gap-3">
           {(['formeel', 'informeel', 'vriendelik'] as TonePreset[]).map((tone) => (
             <TouchableOpacity
@@ -367,6 +388,18 @@ export default function SettingsScreen() {
         >
           <Text className="text-center font-medium text-base text-white">
             {isSigningOut ? 'Meld tans af…' : 'Meld af'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          className="mt-4 rounded-xl border border-border px-4 py-3.5"
+          onPress={handleResetOnboarding}
+        >
+          <Text className="text-center font-medium text-base text-foreground">
+            Begin onboarding weer
+          </Text>
+          <Text className="mt-1 text-center text-xs text-muted">
+            Perfek om iemand nuut die ervaring te wys.
           </Text>
         </TouchableOpacity>
       </View>

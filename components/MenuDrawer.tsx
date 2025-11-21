@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useChatStore, Conversation } from '@/store/chatStore';
 import { useUserStore } from '@/store/userStore';
 
-const ACCENT = '#DE7356';
+const ACCENT = '#B46E3A';
 
 type MenuDrawerProps = {
   visible: boolean;
@@ -153,7 +153,7 @@ export default function MenuDrawer({ visible, onClose }: MenuDrawerProps) {
               <View className="flex-row items-center justify-between mb-4">
                 <Text className="font-heading font-semibold text-xl text-foreground">Menu</Text>
                 <TouchableOpacity onPress={onClose} className="p-2">
-                  <Ionicons name="close" size={24} color="#2C2C2C" />
+                  <Ionicons name="close" size={24} color="#E8E2D6" />
                 </TouchableOpacity>
               </View>
             </View>

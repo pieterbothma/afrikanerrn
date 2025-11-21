@@ -120,3 +120,9 @@ alter table public.messages add column if not exists is_favorite boolean default
 alter table public.messages add column if not exists is_pinned boolean default false;
 alter table public.messages add column if not exists tags text[] default '{}';
 
+-- Add document columns for file attachments
+alter table public.messages add column if not exists document_url text;
+alter table public.messages add column if not exists document_name text;
+alter table public.messages add column if not exists document_mime_type text;
+alter table public.messages add column if not exists document_size integer;
+

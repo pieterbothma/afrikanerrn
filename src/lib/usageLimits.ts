@@ -122,6 +122,20 @@ export async function checkUsageLimit(userId: string, type: UsageType): Promise<
  * Log usage to the database
  */
 export async function logUsage(userId: string, type: UsageType): Promise<void> {
+  // Verify Supabase session matches userId
+  const { data: sessionData } = await supabase.auth.getSession();
+  const authUserId = sessionData?.session?.user?.id;
+  
+  if (!authUserId) {
+    console.error('[RLS Debug] Geen Supabase sessie vir usage log');
+    return; // Silently fail usage logging if not authenticated
+  }
+  
+  if (authUserId !== userId) {
+    console.error(`[RLS Debug] Usage log sessie mismatch: auth.uid()=${authUserId}, userId=${userId}`);
+    return; // Silently fail if mismatch
+  }
+
   const { error } = await supabase.from('usage_logs').insert({
     user_id: userId,
     type,
@@ -129,6 +143,7 @@ export async function logUsage(userId: string, type: UsageType): Promise<void> {
 
   if (error) {
     console.error('Kon nie gebruik log nie:', error);
+    console.error('[RLS Debug] Volledige usage log fout:', JSON.stringify(error, null, 2));
   }
 }
 

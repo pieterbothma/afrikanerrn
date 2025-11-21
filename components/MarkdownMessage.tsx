@@ -16,9 +16,11 @@ type MarkdownMessageProps = {
 
 export default function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
-  const textColor = isUser ? '#FFFFFF' : '#1F1F2B';
-  const subtleColor = isUser ? 'rgba(255,255,255,0.75)' : '#6B6B80';
-  const accentColor = isUser ? '#FFFFFF' : '#DE7356';
+  // User: White text on Copper background
+  // AI: Sand text on Black card
+  const textColor = isUser ? '#FFFFFF' : '#E8E2D6';
+  const subtleColor = isUser ? 'rgba(255,255,255,0.8)' : '#F7F3EE';
+  const accentColor = isUser ? '#FFFFFF' : '#B46E3A';
 
   return (
     <View>
@@ -223,35 +225,37 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 16,
     lineHeight: 24,
+    fontFamily: 'Inter',
   },
   paragraph: {
     fontSize: 16,
     lineHeight: 24,
     marginBottom: 10,
+    fontFamily: 'Inter',
   },
   h1: {
     fontSize: 26,
     fontWeight: '700',
     marginBottom: 12,
-    fontFamily: 'ParkinsansBold',
+    fontFamily: 'InterTight',
   },
   h2: {
     fontSize: 22,
     fontWeight: '700',
     marginBottom: 10,
-    fontFamily: 'ParkinsansBold',
+    fontFamily: 'InterTight',
   },
   h3: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 8,
-    fontFamily: 'ParkinsansBold',
+    fontFamily: 'InterTight',
   },
   h4: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 6,
-    fontFamily: 'ParkinsansBold',
+    fontFamily: 'InterTight',
   },
   listContainer: {
     marginBottom: 8,
@@ -266,6 +270,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     width: 16,
     textAlign: 'center',
+    fontFamily: 'Inter',
   },
   listNumber: {
     fontSize: 16,
@@ -273,14 +278,17 @@ const styles = StyleSheet.create({
     width: 24,
     textAlign: 'right',
     marginRight: 8,
+    fontFamily: 'Inter',
   },
   listText: {
     flex: 1,
     fontSize: 16,
     lineHeight: 24,
+    fontFamily: 'Inter',
   },
   bold: {
     fontWeight: '700',
+    fontFamily: 'InterBold',
   },
   italic: {
     fontStyle: 'italic',
@@ -291,7 +299,7 @@ const styles = StyleSheet.create({
       android: 'monospace',
       default: 'Courier',
     }),
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 4,
     borderRadius: 4,
   },
@@ -312,6 +320,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     fontStyle: 'italic',
+    fontFamily: 'Inter',
   },
 });
 
@@ -328,6 +337,3 @@ function getHeadingStyle(level: number) {
       return styles.h4;
   }
 }
-
-
-
