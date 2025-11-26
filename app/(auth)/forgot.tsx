@@ -13,10 +13,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 
-import BrutalistCard from '@/components/BrutalistCard';
 import { supabase } from '@/lib/supabase';
 
-const ACCENT = '#B46E3A';
 const LOGO = require('../../assets/branding/koedoelogo.png');
 
 type ForgotPasswordForm = {
@@ -59,24 +57,28 @@ export default function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-background"
+      className="flex-1 bg-sand"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 48 }}>
+        {/* Header Section */}
         <View className="items-center mb-8">
           <Image source={LOGO} style={{ height: 120, width: 220, resizeMode: 'contain' }} className="mb-6" />
-          <Text className="font-heading font-bold text-2xl text-foreground text-center tracking-wide">
-            WELKOM BY KOEDOE
+          <Text className="font-heading font-black text-3xl text-charcoal text-center tracking-wide uppercase">
+            Wagwoord Vergeet?
           </Text>
-          <Text className="mt-2 font-normal text-lg text-accent text-center tracking-widest uppercase">
+          <Text className="mt-2 font-bold text-lg text-teal text-center tracking-widest uppercase">
             Slim. Sterk. Afrikaans.
           </Text>
         </View>
 
-        <BrutalistCard
-          title="Wagwoord vergeet?"
-          description="Voer jou e-posadres in en ons stuur jou 'n skakel om jou wagwoord te herstel."
-        >
+        {/* Main Card */}
+        <View className="bg-white rounded-xl border-3 border-borderBlack p-6 shadow-brutal">
+          {/* Instructional Text */}
+          <Text className="font-medium text-base text-[#1A1A1A] opacity-90 mb-1">
+            Voer jou e-posadres in en ons stuur jou 'n skakel om jou wagwoord te herstel.
+          </Text>
+
           <Controller
             control={control}
             name="email"
@@ -88,9 +90,9 @@ export default function ForgotPasswordScreen() {
               },
             }}
             render={({ field: { onChange, onBlur, value }, fieldState: { error } }) => (
-              <View className="mt-4">
+              <View className="mt-5 mb-2">
                 <TextInput
-                  className="rounded-2xl border border-border bg-background px-4 py-4 font-normal text-base text-foreground"
+                  className="rounded-xl border-2 border-borderBlack bg-white px-4 py-4 font-medium text-base text-charcoal"
                   placeholder="jou@epos.co.za"
                   placeholderTextColor="#8E8EA0"
                   value={value}
@@ -102,18 +104,23 @@ export default function ForgotPasswordScreen() {
                   editable={!isSubmitting}
                 />
                 {error && (
-                  <Text className="mt-2 font-medium text-sm text-accent">{error.message}</Text>
+                  <Text className="mt-2 font-bold text-sm text-errorRed">{error.message}</Text>
                 )}
+                
+                {/* Microcopy */}
+                <Text className="mt-2 font-medium text-xs text-charcoal/60">
+                  Ons sal vir jou 'n skakel stuur om 'n nuwe wagwoord te kies.
+                </Text>
               </View>
             )}
           />
 
           <TouchableOpacity
-            className="mt-6 rounded-xl bg-accent px-6 py-4"
+            className="mt-6 rounded-xl bg-copper border-2 border-borderBlack px-6 py-4 shadow-brutal-sm"
             onPress={handleSubmit(onSubmit)}
             disabled={isSubmitting}
           >
-            <Text className="text-center font-medium text-lg text-white">
+            <Text className="text-center font-black text-lg text-white uppercase tracking-wide">
               {isSubmitting ? 'Stuur tans…' : 'Stuur herstel-skakel'}
             </Text>
           </TouchableOpacity>
@@ -123,13 +130,12 @@ export default function ForgotPasswordScreen() {
             onPress={() => router.back()}
             disabled={isSubmitting}
           >
-            <Text className="text-center font-medium text-base text-muted">
+            <Text className="text-center font-bold text-base text-charcoal/60">
               Terug na aanmelding
             </Text>
           </TouchableOpacity>
-        </BrutalistCard>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
-

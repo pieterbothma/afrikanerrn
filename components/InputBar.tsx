@@ -1,22 +1,32 @@
-import { useRef, useState, useEffect } from 'react';
-import type { ComponentProps } from 'react';
+import { useRef, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Image,
-  InteractionManager,
   Keyboard,
-  Modal,
-  Pressable,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { track } from '@/lib/analytics';
-import { formatBytes } from '@/lib/utils';
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { track } from "@/lib/analytics";
+import { formatBytes } from "@/lib/utils";
+import AttachmentSheet, { AttachmentAction } from "./AttachmentSheet";
+import DocumentPreview from "./DocumentPreview";
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const ACCENT = '#DE7356'; // Copper
+const TEXT_COLOR = '#1A1A1A'; // Charcoal
+const BORDER_COLOR = '#000000'; // Black
 
 type InputBarProps = {
   value: string;
@@ -28,24 +38,214 @@ type InputBarProps = {
   onCreateImage?: () => void;
   onIdentifyPhoto?: () => void;
   isSending?: boolean;
-  pendingImage?: { uri: string; previewUri: string } | null;
+  pendingImage?: {
+    uri: string;
+    previewUri: string;
+    uploadState?: 'uploading' | 'done' | 'failed';
+    uploadError?: string;
+  } | null;
   onClearPendingImage?: () => void;
-  pendingDocument?: { uri: string; localUri?: string; name: string; mimeType?: string; size?: number } | null;
+  onRetryImageUpload?: () => void;
+  pendingDocument?: {
+    uri: string;
+    localUri?: string;
+    name: string;
+    mimeType?: string;
+    size?: number;
+    uploadState?: 'uploading' | 'done' | 'failed';
+    uploadError?: string;
+    preview?: string;
+    truncated?: boolean;
+  } | null;
   onClearPendingDocument?: () => void;
+  onRetryDocumentUpload?: () => void;
+  usageInfo?: {
+    imageGenerate?: { current: number; limit: number; remaining: number };
+    imageEdit?: { current: number; limit: number; remaining: number };
+  };
 };
 
-type IoniconsName = ComponentProps<typeof Ionicons>['name'];
+// Animated send button with pulse effect when ready
+function AnimatedSendButton({
+  onPress,
+  disabled,
+  isSending,
+  isReady,
+}: {
+  onPress: () => void;
+  disabled: boolean;
+  isSending: boolean;
+  isReady: boolean;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-type MenuOption = {
-  id: string;
-  title: string;
-  icon: IoniconsName;
-  analyticsKey: string;
-  onPress?: () => void;
-  dividerAfter?: boolean;
-};
+  // Pulse animation when ready to send
+  useEffect(() => {
+    if (isReady && !isSending) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.08,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isReady, isSending, pulseAnim]);
 
-const MENU_WIDTH = 250;
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.9,
+      useNativeDriver: true,
+      friction: 5,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 5,
+    }).start();
+  };
+
+  return (
+    <Animated.View
+      style={{
+        transform: [
+          { scale: Animated.multiply(scaleAnim, pulseAnim) },
+        ],
+      }}
+    >
+      <TouchableOpacity
+        className="rounded-full bg-copper w-10 h-10 items-center justify-center border-2 border-borderBlack"
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled}
+        accessibilityLabel="Stuur boodskap"
+        activeOpacity={1}
+        style={{
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        {isSending ? (
+          <ActivityIndicator color="#F7F3EE" size="small" />
+        ) : (
+          <Ionicons name="arrow-up" size={20} color="#F7F3EE" />
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// Animated attachment button
+function AnimatedAttachmentButton({ onPress }: { onPress: () => void }) {
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 0.9,
+        useNativeDriver: true,
+        friction: 5,
+      }),
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 5,
+      }),
+      Animated.timing(rotateAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
+
+  return (
+    <Animated.View
+      style={{
+        transform: [{ scale: scaleAnim }, { rotate }],
+      }}
+    >
+      <TouchableOpacity
+        className="rounded-full bg-yellow w-10 h-10 items-center justify-center border-2 border-borderBlack"
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={1}
+      >
+        <Ionicons name="add" size={24} color={TEXT_COLOR} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// Animated pending attachment container
+function AnimatedAttachmentPreview({ children, onClear }: { children: React.ReactNode; onClear?: () => void }) {
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [slideAnim, opacityAnim]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: opacityAnim,
+        transform: [{
+          translateY: slideAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [20, 0],
+          }),
+        }],
+      }}
+      className="mb-3"
+    >
+      {children}
+    </Animated.View>
+  );
+}
 
 export default function InputBar({
   value,
@@ -59,23 +259,24 @@ export default function InputBar({
   isSending = false,
   pendingImage,
   onClearPendingImage,
+  onRetryImageUpload,
   pendingDocument,
   onClearPendingDocument,
+  onRetryDocumentUpload,
+  usageInfo,
 }: InputBarProps) {
-  const [isMenuVisible, setIsMenuVisible] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [menuHeight, setMenuHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const pendingCallbackRef = useRef<{ callback: () => void; analyticsEvent?: string } | null>(null);
+  const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const insets = useSafeAreaInsets();
-  const addButtonRef = useRef<TouchableOpacity>(null);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const textInputRef = useRef<TextInput>(null);
+  const borderAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
       setIsKeyboardVisible(true);
     });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
       setIsKeyboardVisible(false);
     });
 
@@ -85,264 +286,253 @@ export default function InputBar({
     };
   }, []);
 
-  const handleSend = () => {
-    if (value.trim().length === 0 || isSending) {
-      return;
-    }
+  // Animate border on focus
+  useEffect(() => {
+    Animated.timing(borderAnim, {
+      toValue: isFocused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [isFocused, borderAnim]);
 
+  const handleSend = () => {
+    if (isSending) return;
     onSend();
   };
 
-  const handleWithClose = (callback?: () => void, analyticsEvent?: string) => {
-    if (analyticsEvent) {
-      track('chat_plus_action', { action: analyticsEvent });
-    }
+  const handleAttachmentPress = () => {
+    track("chat_plus_action", { action: "attachment_menu_opened" });
+    setShowAttachmentSheet(true);
+  };
+
+  const handleAttachmentSelect = (action: AttachmentAction) => {
+    track("chat_plus_action", { action });
     
-    // Store callback to execute after modal fully dismisses
-    if (callback) {
-      pendingCallbackRef.current = { callback, analyticsEvent };
-    }
-    
-    // Close menu first
-    setMenuAnchor(null);
-    setIsMenuVisible(false);
-  };
-
-  // Execute pending callback when modal is fully dismissed
-  useEffect(() => {
-    if (!isMenuVisible && pendingCallbackRef.current) {
-      const { callback, analyticsEvent } = pendingCallbackRef.current;
-      pendingCallbackRef.current = null;
-      
-      console.log('[InputBar] Modal dismissed, executing callback:', analyticsEvent);
-      // For camera, image picker, and document picker, we need significant time to ensure modal is fully dismissed
-      // iOS requires the modal to be completely gone and app to be ready before opening camera/gallery/picker
-      const delay = analyticsEvent === 'take_photo' || analyticsEvent === 'identify_photo' || analyticsEvent === 'upload_document' ? 1000 : 300;
-      
-      // Use InteractionManager to ensure modal animation completes before opening camera
-      InteractionManager.runAfterInteractions(() => {
-        // Additional delay to ensure modal is fully dismissed and app is ready
-        setTimeout(() => {
-          try {
-            console.log('[InputBar] Calling callback now after', delay, 'ms delay');
-            callback();
-          } catch (error) {
-            console.error('[InputBar] Error executing menu callback:', error);
-          }
-        }, delay);
-      });
-    }
-  }, [isMenuVisible]);
-
-  const handleOpenMenu = () => {
-    track('chat_plus_opened');
-    setIsMenuVisible(true);
-
-    if (addButtonRef.current?.measureInWindow) {
-      addButtonRef.current.measureInWindow((x, y, width, height) => {
-        setMenuAnchor({ x, y, width, height });
-      });
-    } else {
-      setMenuAnchor(null);
+    switch (action) {
+      case 'camera':
+        onTakePhoto?.();
+        break;
+      case 'gallery':
+        onIdentifyPhoto?.();
+        break;
+      case 'document':
+        onAddFiles?.();
+        break;
+      case 'create_image':
+        onCreateImage?.();
+        break;
+      case 'edit_image':
+        onEditPhoto?.();
+        break;
     }
   };
 
-  const menuOptions: MenuOption[] = [
-    onTakePhoto && {
-      id: 'camera',
-      title: 'Kamera',
-      icon: 'camera-outline',
-      analyticsKey: 'take_photo',
-      onPress: onTakePhoto,
-    },
-    onIdentifyPhoto && {
-      id: 'photos',
-      title: 'Laai Foto Op',
-      icon: 'images-outline',
-      analyticsKey: 'identify_photo',
-      onPress: onIdentifyPhoto,
-    },
-    onAddFiles && {
-      id: 'files',
-      title: 'Dokumente',
-      icon: 'document-text-outline',
-      analyticsKey: 'upload_document',
-      onPress: onAddFiles,
-      dividerAfter: true,
-    },
-    onCreateImage && {
-      id: 'create-image',
-      title: 'Skep Prent',
-      icon: 'sparkles-outline',
-      analyticsKey: 'create_image',
-      onPress: onCreateImage,
-    },
-    onEditPhoto && {
-      id: 'edit-image',
-      title: 'Wysig Prent',
-      icon: 'color-wand-outline',
-      analyticsKey: 'edit_photo',
-      onPress: onEditPhoto,
-    },
-  ].filter((option): option is MenuOption => Boolean(option));
-
-  const getMenuPositionStyle = () => {
-    if (!menuAnchor) {
-      return {
-        left: 24,
-        bottom: insets.bottom + 120,
-      };
-    }
-
-    const estimatedHeight = menuHeight || 220;
-    const topSpacing = 12;
-    const tentativeTop = menuAnchor.y - estimatedHeight - topSpacing;
-    const top = Math.max(insets.top + 24, tentativeTop);
-
-    const anchorCenterX = menuAnchor.x + menuAnchor.width / 2;
-    const tentativeLeft = anchorCenterX - MENU_WIDTH / 2;
-    const left = Math.min(Math.max(tentativeLeft, 16), screenWidth - MENU_WIDTH - 16);
-
-    const maxTop = screenHeight - estimatedHeight - (insets.bottom + 16);
-
-    return {
-      left,
-      top: Math.min(top, maxTop),
-    };
+  const handleClearImage = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onClearPendingImage?.();
   };
+
+  const handleClearDocument = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onClearPendingDocument?.();
+  };
+
+  const isReady = (value.trim().length > 0 || !!pendingImage || !!pendingDocument) &&
+    pendingImage?.uploadState !== 'uploading' &&
+    pendingImage?.uploadState !== 'failed' &&
+    pendingDocument?.uploadState !== 'uploading' &&
+    pendingDocument?.uploadState !== 'failed';
+
+  const isDisabled = isSending ||
+    (value.trim().length === 0 && !pendingImage && !pendingDocument) ||
+    pendingImage?.uploadState === 'uploading' ||
+    pendingImage?.uploadState === 'failed' ||
+    pendingDocument?.uploadState === 'uploading' ||
+    pendingDocument?.uploadState === 'failed';
 
   return (
-    <>
-      <View
-        className="border-t border-border bg-background px-4 py-3"
-        style={{ 
-          paddingBottom: isKeyboardVisible ? 4 : Math.max(insets.bottom, 16),
-          backgroundColor: '#1A1A1A',
-        }}
-      >
-        {pendingImage && (
-          <View className="mb-3 relative">
-            <View className="rounded-xl overflow-hidden border border-border bg-card">
-              <Image
-                source={{ uri: pendingImage.previewUri || pendingImage.uri }}
-                className="w-full"
-                style={{ height: 200, maxHeight: 300 }}
-                resizeMode="contain"
-              />
-              <TouchableOpacity
-                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 items-center justify-center"
-                onPress={onClearPendingImage}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        {pendingDocument && (
-          <View className="mb-3 relative">
-            <View className="rounded-xl border border-border bg-card p-4 flex-row items-center">
-              <View className="w-12 h-12 rounded-xl bg-accent/20 items-center justify-center mr-3">
-                <Ionicons name="document-text" size={24} color="#B46E3A" />
+    <View
+      className="px-4 pb-4 pt-2 bg-transparent"
+      style={{
+        marginBottom: isKeyboardVisible ? 0 : Math.max(insets.bottom + 12, 24),
+      }}
+    >
+      {/* Pending Image Preview */}
+      {pendingImage && (
+        <AnimatedAttachmentPreview>
+          <View className="rounded-xl overflow-hidden border-2 border-borderBlack bg-white">
+            <Image
+              source={{ uri: pendingImage.previewUri || pendingImage.uri }}
+              className="w-full"
+              style={{ height: 200, maxHeight: 300 }}
+              resizeMode="contain"
+            />
+            {pendingImage.uploadState === 'uploading' && (
+              <View className="absolute inset-0 bg-black/40 items-center justify-center">
+                <ActivityIndicator size="large" color={ACCENT} />
+                <Text className="text-white text-sm mt-2">Laai op...</Text>
               </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-base text-foreground" numberOfLines={1}>
-                  {pendingDocument.name}
+            )}
+            {pendingImage.uploadState === 'failed' && (
+              <View className="absolute inset-0 bg-black/60 items-center justify-center p-4">
+                <Ionicons name="alert-circle" size={24} color="#F87171" />
+                <Text className="text-white text-sm mt-2 text-center">
+                  {pendingImage.uploadError || 'Oplaai het gefaal'}
                 </Text>
-                {pendingDocument.size && (
-                  <Text className="text-xs text-muted mt-0.5">
-                    {formatBytes(pendingDocument.size)}
-                  </Text>
+                {onRetryImageUpload && (
+                  <TouchableOpacity
+                    className="mt-3 bg-accent px-4 py-2 rounded-lg"
+                    onPress={onRetryImageUpload}
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-white font-semibold text-sm">Probeer weer</Text>
+                  </TouchableOpacity>
                 )}
               </View>
+            )}
+            {pendingImage.uploadState === 'done' && (
+              <View className="absolute top-2 left-2 bg-success/90 rounded-full px-2 py-1 flex-row items-center">
+                <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" />
+                <Text className="text-white text-xs ml-1 font-medium">Gereed</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 items-center justify-center"
+              onPress={handleClearImage}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </AnimatedAttachmentPreview>
+      )}
+
+      {/* Pending Document Preview */}
+      {pendingDocument && (
+        <AnimatedAttachmentPreview>
+          <View className="rounded-xl border-2 border-borderBlack bg-white p-4">
+            {pendingDocument.uploadState === 'uploading' && (
+              <View className="absolute inset-0 bg-black/40 rounded-xl items-center justify-center z-10">
+                <ActivityIndicator size="large" color={ACCENT} />
+                <Text className="text-white text-sm mt-2">Laai op...</Text>
+              </View>
+            )}
+            {pendingDocument.preview ? (
+              <View className="relative">
+                <DocumentPreview
+                  name={pendingDocument.name}
+                  size={pendingDocument.size}
+                  mimeType={pendingDocument.mimeType}
+                  preview={pendingDocument.preview}
+                  truncated={pendingDocument.truncated}
+                  compact={true}
+                />
+                <TouchableOpacity
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 items-center justify-center"
+                  onPress={handleClearDocument}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View className="flex-row items-center">
+                <View className="w-12 h-12 rounded-xl bg-accent/20 items-center justify-center mr-3">
+                  <Ionicons name="document-text" size={24} color={ACCENT} />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className="font-semibold text-base text-charcoal"
+                    numberOfLines={1}
+                  >
+                    {pendingDocument.name}
+                  </Text>
+                  <View className="flex-row items-center gap-2 mt-0.5">
+                    {pendingDocument.size && (
+                      <Text className="text-xs text-charcoal/60">
+                        {formatBytes(pendingDocument.size)}
+                      </Text>
+                    )}
+                    {pendingDocument.uploadState === 'done' && (
+                      <View className="flex-row items-center">
+                        <Ionicons name="checkmark-circle" size={12} color="#4ADE80" />
+                        <Text className="text-xs text-success ml-1">Gereed</Text>
+                      </View>
+                    )}
+                  </View>
+                  {pendingDocument.uploadState === 'failed' && (
+                    <Text className="text-xs text-error mt-1">
+                      {pendingDocument.uploadError || 'Oplaai het gefaal'}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  className="w-8 h-8 rounded-full bg-black/60 items-center justify-center ml-2"
+                  onPress={handleClearDocument}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            )}
+            {pendingDocument.uploadState === 'failed' && onRetryDocumentUpload && (
               <TouchableOpacity
-                className="w-7 h-7 rounded-full bg-black/60 items-center justify-center ml-2"
-                onPress={onClearPendingDocument}
+                className="mt-3 bg-accent/20 border border-accent px-4 py-2 rounded-lg flex-row items-center justify-center"
+                onPress={onRetryDocumentUpload}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={18} color="#FFFFFF" />
+                <Ionicons name="refresh" size={16} color={ACCENT} />
+                <Text className="text-accent font-semibold text-sm ml-2">Probeer weer</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        <View className="flex-row items-end gap-3">
-          <TouchableOpacity
-            ref={addButtonRef}
-            className="rounded-full bg-card w-11 h-11 items-center justify-center mb-0.5"
-            onPress={handleOpenMenu}
-            accessibilityLabel="Voeg by"
-            activeOpacity={0.6}
-          >
-            <Ionicons name="add" size={28} color="#E8E2D6" />
-          </TouchableOpacity>
-
-          <View className="flex-1 rounded-2xl bg-background border border-border px-4 py-2.5 min-h-[44px] justify-center">
-            <TextInput
-              className="font-normal text-base text-foreground"
-              placeholder="Vra Koedoe"
-              placeholderTextColor="#8E8EA0"
-              value={value}
-              onChangeText={onChangeText}
-              multiline
-              textAlignVertical="top"
-              autoCorrect
-              autoCapitalize="sentences"
-              style={{ minHeight: 20, maxHeight: 100, paddingVertical: 0 }}
-            />
-          </View>
-
-          <TouchableOpacity
-            className="rounded-full bg-accent w-11 h-11 items-center justify-center mb-0.5"
-            onPress={handleSend}
-            disabled={isSending || (value.trim().length === 0 && !pendingImage && !pendingDocument)}
-            accessibilityLabel="Stuur boodskap"
-            activeOpacity={0.8}
-            style={{ opacity: (value.trim().length === 0 && !pendingImage && !pendingDocument) ? 0.5 : 1 }}
-          >
-            {isSending ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Ionicons name="arrow-up" size={24} color="#FFFFFF" />
             )}
+          </View>
+        </AnimatedAttachmentPreview>
+      )}
+
+      {/* Input Row */}
+      <View 
+        className="flex-row items-end bg-white rounded-3xl border-3 border-borderBlack shadow-brutal-sm overflow-hidden pl-3 pr-2 py-2"
+      >
+        <View className="mb-1 mr-2">
+          <TouchableOpacity
+            onPress={handleAttachmentPress}
+            className="w-8 h-8 items-center justify-center rounded-full bg-charcoal"
+          >
+            <Ionicons name="add" size={20} color="#FFF" />
           </TouchableOpacity>
+        </View>
+
+        <TextInput
+          ref={textInputRef}
+          className="flex-1 font-medium text-base text-charcoal min-h-[40px] max-h-[100px] pt-2.5 pb-2.5"
+          placeholder="Vra Koedoe..."
+          placeholderTextColor="#8E8EA0"
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          multiline
+          textAlignVertical="center"
+          autoCorrect
+          autoCapitalize="sentences"
+        />
+
+        <View className="mb-0.5">
+          <AnimatedSendButton
+            onPress={handleSend}
+            disabled={isDisabled}
+            isSending={isSending}
+            isReady={isReady}
+          />
         </View>
       </View>
 
-      <Modal animationType="fade" transparent visible={isMenuVisible} onRequestClose={() => handleWithClose()}>
-        <View className="flex-1">
-          <Pressable className="flex-1 bg-black/55" onPress={() => handleWithClose()}>
-            {/* Tap outside to close */}
-          </Pressable>
-
-          {menuOptions.length > 0 && (
-            <View pointerEvents="box-none" className="absolute inset-0">
-          <View
-                className="absolute rounded-[32px] bg-[#121212] border border-[#2A2A2A] shadow-2xl shadow-black/80 overflow-hidden"
-                style={[{ width: MENU_WIDTH }, getMenuPositionStyle()]}
-                onLayout={(event) => setMenuHeight(event.nativeEvent.layout.height)}
-              >
-                {menuOptions.map((option, index) => (
-                  <View key={option.id}>
-                <TouchableOpacity
-                      className="flex-row items-center gap-3 px-4 py-3 active:bg-[#1F1F1F]"
-                      onPress={() => handleWithClose(option.onPress, option.analyticsKey)}
-                    activeOpacity={0.85}
-                    >
-                      <View className="w-11 h-11 rounded-full bg-[#1E1E1E] items-center justify-center">
-                        <Ionicons name={option.icon} size={22} color="#F2F0E6" />
-                    </View>
-                      <Text className="text-base font-semibold text-[#F2F0E6]">{option.title}</Text>
-                    </TouchableOpacity>
-                    {option.dividerAfter && index !== menuOptions.length - 1 && (
-                      <View className="mx-4 h-px bg-[#252525]" />
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-            )}
-          </View>
-      </Modal>
-    </>
+      <AttachmentSheet
+        visible={showAttachmentSheet}
+        onClose={() => setShowAttachmentSheet(false)}
+        onSelect={handleAttachmentSelect}
+        usageInfo={usageInfo}
+      />
+    </View>
   );
 }

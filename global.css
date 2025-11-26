@@ -2,3 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Koedoe Design System - Playful Neobrutalism */
+:root {
+  --background: #E8E2D6; /* Sand */
+  --foreground: #1A1A1A; /* Charcoal */
+  
+  --card: #F7F3EE;       /* Ivory */
+  --card-foreground: #1A1A1A;
+
+  --popover: #F7F3EE;
+  --popover-foreground: #1A1A1A;
+
+  --primary: #DE7356;    /* Copper */
+  --primary-foreground: #F7F3EE; /* Ivory */
+
+  --secondary: #3EC7E3;  /* Teal */
+  --secondary-foreground: #1A1A1A;
+
+  --muted: #E8E2D6;      /* Sand (darker than ivory) */
+  --muted-foreground: #1A1A1A;
+
+  --accent: #FFD800;     /* Yellow */
+  --accent-foreground: #1A1A1A;
+
+  --destructive: #E63946; /* Error Red */
+  --destructive-foreground: #F7F3EE;
+
+  --border: #000000;     /* Border Black */
+  --input: #000000;
+  --ring: #000000;
+
+  --radius: 12px;
+}
+
+/* Animation keyframes for NativeWind compatibility */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

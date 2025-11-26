@@ -14,13 +14,29 @@ type MarkdownMessageProps = {
   isUser: boolean;
 };
 
+// Neobrutalist Colors
+const COLORS = {
+  user: {
+    text: '#F7F3EE', // Ivory
+    subtle: 'rgba(247, 243, 238, 0.8)',
+    accent: '#FFFFFF',
+    code: 'rgba(255, 255, 255, 0.15)',
+  },
+  bot: {
+    text: '#1A1A1A', // Charcoal
+    subtle: 'rgba(26, 26, 26, 0.7)',
+    accent: '#DE7356', // Copper
+    code: 'rgba(222, 115, 86, 0.1)', // Copper tint
+  },
+};
+
 export default function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
-  // User: White text on Copper background
-  // AI: Sand text on Black card
-  const textColor = isUser ? '#FFFFFF' : '#E8E2D6';
-  const subtleColor = isUser ? 'rgba(255,255,255,0.8)' : '#F7F3EE';
-  const accentColor = isUser ? '#FFFFFF' : '#B46E3A';
+  
+  const theme = isUser ? COLORS.user : COLORS.bot;
+  const textColor = theme.text;
+  const subtleColor = theme.subtle;
+  const accentColor = theme.accent;
 
   return (
     <View>
@@ -29,13 +45,13 @@ export default function MarkdownMessage({ content, isUser }: MarkdownMessageProp
           case 'heading':
             return (
               <Text key={`heading-${index}`} style={[getHeadingStyle(block.level), { color: textColor }]}>
-                {renderInline(block.text, [styles.text, { color: textColor }], `heading-${index}`)}
+                {renderInline(block.text, [styles.text, { color: textColor }], `heading-${index}`, theme.code)}
               </Text>
             );
           case 'paragraph':
             return (
               <Text key={`para-${index}`} style={[styles.paragraph, { color: textColor }]}>
-                {renderInline(block.text, [styles.text, { color: textColor }], `para-${index}`)}
+                {renderInline(block.text, [styles.text, { color: textColor }], `para-${index}`, theme.code)}
               </Text>
             );
           case 'unordered-list':
@@ -45,7 +61,7 @@ export default function MarkdownMessage({ content, isUser }: MarkdownMessageProp
                   <View key={`ul-${index}-${itemIndex}`} style={styles.listRow}>
                     <Text style={[styles.listBullet, { color: accentColor }]}>•</Text>
                     <Text style={[styles.listText, { color: textColor }]}>
-                      {renderInline(item, [styles.text, { color: textColor }], `ul-${index}-${itemIndex}`)}
+                      {renderInline(item, [styles.text, { color: textColor }], `ul-${index}-${itemIndex}`, theme.code)}
                     </Text>
                   </View>
                 ))}
@@ -60,7 +76,7 @@ export default function MarkdownMessage({ content, isUser }: MarkdownMessageProp
                       {(item.index || itemIndex + 1).toString()}.
                     </Text>
                     <Text style={[styles.listText, { color: textColor }]}>
-                      {renderInline(item.text, [styles.text, { color: textColor }], `ol-${index}-${itemIndex}`)}
+                      {renderInline(item.text, [styles.text, { color: textColor }], `ol-${index}-${itemIndex}`, theme.code)}
                     </Text>
                   </View>
                 ))}
@@ -71,7 +87,7 @@ export default function MarkdownMessage({ content, isUser }: MarkdownMessageProp
               <View key={`quote-${index}`} style={styles.quoteContainer}>
                 <View style={[styles.quoteBar, { backgroundColor: accentColor }]} />
                 <Text style={[styles.quoteText, { color: subtleColor }]}>
-                  {renderInline(block.text, [styles.text, { color: subtleColor }], `quote-${index}`)}
+                  {renderInline(block.text, [styles.text, { color: subtleColor }], `quote-${index}`, theme.code)}
                 </Text>
               </View>
             );
@@ -170,7 +186,7 @@ function parseMarkdown(content: string): MarkdownBlock[] {
   return blocks;
 }
 
-function renderInline(text: string, baseStyle: TextStyle[], keyPrefix: string) {
+function renderInline(text: string, baseStyle: TextStyle[], keyPrefix: string, codeBgColor: string) {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
   let match: RegExpExecArray | null;
@@ -201,7 +217,7 @@ function renderInline(text: string, baseStyle: TextStyle[], keyPrefix: string) {
       );
     } else if (token.startsWith('`')) {
       nodes.push(
-        <Text key={`${keyPrefix}-code-${key++}`} style={[...baseStyle, styles.code]}>
+        <Text key={`${keyPrefix}-code-${key++}`} style={[...baseStyle, styles.code, { backgroundColor: codeBgColor }]}>
           {token.substring(1, token.length - 1)}
         </Text>,
       );
@@ -235,13 +251,13 @@ const styles = StyleSheet.create({
   },
   h1: {
     fontSize: 26,
-    fontWeight: '700',
+    fontWeight: '900',
     marginBottom: 12,
     fontFamily: 'InterTight',
   },
   h2: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
     marginBottom: 10,
     fontFamily: 'InterTight',
   },
@@ -288,7 +304,7 @@ const styles = StyleSheet.create({
   },
   bold: {
     fontWeight: '700',
-    fontFamily: 'InterBold',
+    fontFamily: 'InterBold', // Ensure this is loaded or fallback to weight
   },
   italic: {
     fontStyle: 'italic',
@@ -299,7 +315,6 @@ const styles = StyleSheet.create({
       android: 'monospace',
       default: 'Courier',
     }),
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 4,
     borderRadius: 4,
   },

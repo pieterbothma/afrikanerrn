@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Link, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
-  Image,
-  KeyboardAvoidingView,
   Platform,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Animated,
+  Image,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,12 +21,74 @@ import { useUserStore } from '@/store/userStore';
 import { signInWithProvider } from '@/lib/auth';
 import { track } from '@/lib/analytics';
 
+const ACCENT = '#DE7356'; // Copper
+const TEAL = '#3EC7E3'; // Teal for focused inputs
+const CHARCOAL = '#1A1A1A';
+const BORDER = '#000000';
 const LOGO = require('../../assets/branding/koedoelogo.png');
 
 type RegisterFormValues = {
   email: string;
   password: string;
 };
+
+// Animated input field component
+function AnimatedInput({
+  label,
+  icon,
+  error,
+  containerStyle,
+  ...inputProps
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  error?: string;
+  containerStyle?: string;
+} & React.ComponentProps<typeof TextInput>) {
+  const [isFocused, setIsFocused] = useState(false);
+  const borderAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(borderAnim, {
+      toValue: isFocused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [isFocused, borderAnim]);
+
+  const borderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [BORDER, TEAL],
+  });
+
+  return (
+    <View className={containerStyle}>
+      <Text className="font-bold text-sm text-charcoal mb-1 ml-1 uppercase tracking-wider">{label}</Text>
+      <Animated.View
+        className="rounded-xl overflow-hidden bg-white shadow-sm"
+        style={{ borderWidth: 2, borderColor }}
+      >
+        <View className="flex-row items-center px-4 h-14">
+          <Ionicons name={icon} size={20} color={CHARCOAL} />
+          <TextInput
+            className="flex-1 h-full px-3 font-medium text-base text-charcoal"
+            placeholderTextColor="#8E8EA0"
+            textAlignVertical="center"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            {...inputProps}
+          />
+        </View>
+      </Animated.View>
+      {error && (
+        <View className="flex-row items-center mt-1.5 ml-1 gap-1">
+          <Ionicons name="alert-circle" size={14} color="#E63946" />
+          <Text className="font-bold text-sm text-errorRed">{error}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -35,6 +98,25 @@ export default function RegisterScreen() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
+
+  // Animation refs
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const formAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.stagger(200, [
+      Animated.spring(headerAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+      }),
+      Animated.spring(formAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+      }),
+    ]).start();
+  }, [headerAnim, formAnim]);
 
   const {
     control,
@@ -65,7 +147,7 @@ export default function RegisterScreen() {
 
     if (!data.user) {
       setInfoMessage(
-        'Rekening geskep. Bevestig jou e-posadres voordat jy kan aanmeld. Sodra dit gedoen is, kom meld aan.',
+        'Rekening geskep! Bevestig jou e-posadres en kom dan aanmeld.',
       );
       setIsSubmitting(false);
       return;
@@ -82,14 +164,14 @@ export default function RegisterScreen() {
     if (data.session) {
       router.replace('/(tabs)');
     } else {
-      setInfoMessage('Ons het ’n bevestigings-e-pos gestuur. Volg die skakel om jou rekening te aktiveer.');
+      setInfoMessage("Ons het 'n bevestigings-e-pos gestuur. Volg die skakel om jou rekening te aktiveer.");
     }
   });
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
     try {
       if (provider === 'apple' && Platform.OS !== 'ios') {
-        Alert.alert('Net beskikbaar op iOS', 'Gebruik asseblief ’n iOS-toestel of kies Google vir nou.');
+        Alert.alert('Net beskikbaar op iOS', "Gebruik asseblief 'n iOS-toestel of kies Google vir nou.");
         return;
       }
       setSocialLoading(provider);
@@ -106,146 +188,187 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-background"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View
-        className="flex-1 px-6"
-        style={{
-          paddingTop: Math.max(insets.top, 48),
-          paddingBottom: Math.max(insets.bottom + 40, 80),
+    <View className="flex-1 bg-sand">
+      <KeyboardAwareScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 24,
+          paddingTop: 32,
+          paddingBottom: Math.max(insets.bottom + 48, 96),
+          justifyContent: 'center',
         }}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid
+        extraScrollHeight={32}
       >
-        <View className="items-center">
+        {/* Animated Header */}
+        <Animated.View 
+          className="items-center mb-10"
+          style={{
+            opacity: headerAnim,
+            transform: [{
+              translateY: headerAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-20, 0],
+              }),
+            }],
+          }}
+        >
           <Image source={LOGO} style={{ height: 120, width: 220, resizeMode: 'contain' }} className="mb-6" />
-          <Text className="font-heading font-bold text-2xl text-foreground text-center tracking-wide">
-            WELKOM BY KOEDOE
+          <Text className="font-heading font-black text-3xl text-charcoal text-center">
+            Skep Jou Rekening
           </Text>
-          <Text className="mt-2 font-normal text-lg text-accent text-center tracking-widest uppercase">
-            Slim. Sterk. Afrikaans.
+          <Text className="mt-2 font-medium text-sm text-charcoal/80 text-center">
+            Begin jou reis met Koedoe AI
           </Text>
-        </View>
+        </Animated.View>
 
-        <View className="mt-10 space-y-4">
-          <View>
-            <Text className="font-semibold text-sm uppercase text-foreground ml-1">E-pos</Text>
-            <Controller
-              control={control}
-              name="email"
-              rules={{
-                required: 'E-pos is verpligtend.',
-                pattern: {
-                  value: /\S+@\S+\.\S+/,
-                  message: 'Voer ’n geldige e-posadres in.',
-                },
-              }}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  className="mt-1 rounded-2xl border border-border bg-card px-4 py-4 font-normal text-base text-foreground"
-                  placeholder="jou@epos.com"
-                  placeholderTextColor="#8E8EA0"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  autoCorrect={false}
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
-            />
-            {errors.email ? (
-              <Text className="mt-1 font-medium text-sm text-accent ml-1">{errors.email.message}</Text>
-            ) : null}
-          </View>
+        {/* Animated Form Section */}
+        <Animated.View
+          style={{
+            opacity: formAnim,
+            transform: [{
+              translateY: formAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [30, 0],
+              }),
+            }],
+          }}
+        >
+          {/* Email Input */}
+          <Controller
+            control={control}
+            name="email"
+            rules={{
+              required: 'E-pos is verpligtend.',
+              pattern: {
+                value: /\S+@\S+\.\S+/,
+                message: "Voer 'n geldige e-posadres in.",
+              },
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <AnimatedInput
+                label="E-pos"
+                icon="mail-outline"
+                placeholder="jou@epos.com"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                error={errors.email?.message}
+                containerStyle="mb-6"
+              />
+            )}
+          />
 
-          <View>
-            <Text className="font-semibold text-sm uppercase text-foreground ml-1">Wagwoord</Text>
-            <Controller
-              control={control}
-              name="password"
-              rules={{
-                required: 'Wagwoord is verpligtend.',
-                minLength: {
-                  value: 6,
-                  message: 'Gebruik minstens 6 karakters vir jou wagwoord.',
-                },
-              }}
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  className="mt-1 rounded-2xl border border-border bg-card px-4 py-4 font-normal text-base text-foreground"
-                  placeholder="kies 'n veilige wagwoord"
-                  placeholderTextColor="#8E8EA0"
-                  secureTextEntry
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
-            />
-            {errors.password ? (
-              <Text className="mt-1 font-medium text-sm text-accent ml-1">{errors.password.message}</Text>
-            ) : null}
-          </View>
+          {/* Password Input */}
+          <Controller
+            control={control}
+            name="password"
+            rules={{
+              required: 'Wagwoord is verpligtend.',
+              minLength: {
+                value: 6,
+                message: 'Gebruik minstens 6 karakters.',
+              },
+            }}
+            render={({ field: { onChange, onBlur, value } }) => (
+              <AnimatedInput
+                label="WAGWOORD"
+                icon="lock-closed-outline"
+                placeholder="Kies 'n wagwoord"
+                secureTextEntry
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+                error={errors.password?.message}
+                containerStyle="mb-10"
+              />
+            )}
+          />
 
-          {authError ? <Text className="font-semibold text-sm text-accent text-center">{authError}</Text> : null}
-          {infoMessage ? (
-            <Text className="font-semibold text-sm text-foreground text-center">{infoMessage}</Text>
-          ) : null}
+          {/* Auth Error */}
+          {authError && (
+            <View className="bg-errorRed/10 border-2 border-errorRed rounded-xl p-3 mb-4 flex-row items-center gap-2">
+              <Ionicons name="warning" size={20} color="#E63946" />
+              <Text className="font-bold text-sm text-errorRed flex-1">{authError}</Text>
+            </View>
+          )}
 
+          {/* Info Message */}
+          {infoMessage && (
+            <View className="bg-veldGreen/10 border-2 border-veldGreen rounded-xl p-3 mb-4 flex-row items-center gap-2">
+              <Ionicons name="checkmark-circle" size={20} color="#3AA66E" />
+              <Text className="font-bold text-sm text-veldGreen flex-1">{infoMessage}</Text>
+            </View>
+          )}
+
+          {/* Submit Button */}
           <TouchableOpacity
-            className="mt-6 rounded-full bg-accent py-4"
+            className="mt-2 rounded-xl bg-copper border-2 border-borderBlack py-4 mb-6 shadow-brutal"
             disabled={isSubmitting}
             onPress={onSubmit}
+            activeOpacity={0.8}
           >
             {isSubmitting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text className="text-center font-bold text-base text-white uppercase tracking-wide">Skep rekening</Text>
+              <View className="flex-row items-center justify-center gap-2">
+                <Text className="font-black text-lg text-white tracking-wide">Skep rekening</Text>
+                <Ionicons name="arrow-forward" size={24} color="#FFFFFF" />
+              </View>
             )}
           </TouchableOpacity>
 
-          <View className="mt-6">
-            <Text className="text-center font-medium text-sm uppercase text-muted tracking-widest">
-              Of registreer binne ’n oomblik
-            </Text>
-            <View className="mt-4 space-y-3">
+          {/* Divider */}
+          <View className="flex-row items-center mb-6">
+            <View className="flex-1 h-0.5 bg-[#3A3A3A]/20" />
+            <Text className="px-4 font-bold text-sm text-[#3A3A3A]/60">OF</Text>
+            <View className="flex-1 h-0.5 bg-[#3A3A3A]/20" />
+          </View>
+
+          {/* Social Auth */}
+          <View className="gap-3 mb-8">
+            <TouchableOpacity
+              className="flex-row items-center justify-center gap-3 rounded-xl border-2 border-borderBlack bg-white py-4 shadow-brutal-sm"
+              onPress={() => handleSocialAuth('google')}
+              disabled={!!socialLoading}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="logo-google" size={20} color={CHARCOAL} />
+              <Text className="font-bold text-base text-charcoal">
+                {socialLoading === 'google' ? 'Verbind…' : 'Registreer met Google'}
+              </Text>
+            </TouchableOpacity>
+            
+            {Platform.OS === 'ios' && (
               <TouchableOpacity
-                className="flex-row items-center justify-center gap-3 rounded-full border border-border bg-card py-3.5"
-                onPress={() => handleSocialAuth('google')}
-                disabled={!!socialLoading}
-                accessibilityRole="button"
-              >
-                <Ionicons name="logo-google" size={20} color="#E8E2D6" />
-                <Text className="font-semibold text-base text-foreground">
-                  {socialLoading === 'google' ? 'Verbind…' : 'Skep rekening met Google'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className={`flex-row items-center justify-center gap-3 rounded-full border border-border py-3.5 ${
-                  Platform.OS === 'ios' ? 'bg-card' : 'bg-card/60'
-                }`}
+                className="flex-row items-center justify-center gap-3 rounded-xl border-2 border-borderBlack bg-white py-4 shadow-brutal-sm"
                 onPress={() => handleSocialAuth('apple')}
                 disabled={!!socialLoading}
-                accessibilityRole="button"
+                activeOpacity={0.7}
               >
-                <Ionicons name="logo-apple" size={22} color="#E8E2D6" />
-                <Text className="font-semibold text-base text-foreground">
-                  {socialLoading === 'apple' ? 'Verbind…' : 'Skep rekening met Apple'}
+                <Ionicons name="logo-apple" size={22} color={CHARCOAL} />
+                <Text className="font-bold text-base text-charcoal">
+                  {socialLoading === 'apple' ? 'Verbind…' : 'Registreer met Apple'}
                 </Text>
               </TouchableOpacity>
-            </View>
+            )}
           </View>
 
-          <View className="mt-6 flex-row items-center justify-center">
-            <Text className="font-medium text-base text-muted">Reeds ’n rekening?</Text>
-            <Link href="/(auth)/login" className="ml-2 font-bold text-base text-foreground">
-              Meld aan
+          {/* Login Link */}
+          <View className="flex-row items-center justify-center pb-4">
+            <Text className="font-medium text-base text-[#555555]">Reeds 'n rekening?</Text>
+            <Link href="/(auth)/login" asChild>
+              <TouchableOpacity className="ml-1">
+                <Text className="font-black text-base text-copper underline">Meld aan</Text>
+              </TouchableOpacity>
             </Link>
           </View>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
+        </Animated.View>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
-

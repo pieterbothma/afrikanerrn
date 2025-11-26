@@ -13,6 +13,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import { uploadDocumentToSupabase } from '@/lib/storage';
 import { formatBytes, generateUUID } from '@/lib/utils';
+import DocumentPreview from './DocumentPreview';
 
 const ACCENT = '#B46E3A';
 const SUPPORTED_EXTENSIONS = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json'];
@@ -181,40 +182,14 @@ export default function DocumentAnalysisModal({
     }
 
     return (
-      <View className="rounded-2xl border border-border bg-card/60 p-4">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-1">
-            <Text className="font-semibold text-base text-foreground" numberOfLines={1}>
-              {document.name}
-            </Text>
-            <Text className="text-xs text-muted mt-0.5">
-              {formatBytes(document.size)} • {document.mimeType || 'text'}
-            </Text>
-          </View>
-          {document.truncated && (
-            <View className="px-2 py-1 rounded-full bg-[#3B2B1C]">
-              <Text className="text-[11px] font-semibold text-[#EBC28E]">Afgekort</Text>
-            </View>
-          )}
-        </View>
-        <View className="rounded-xl bg-[#171717] border border-border/60 px-3 py-3 max-h-[160px]">
-          <ScrollView>
-            <Text className="text-sm text-foreground/90 leading-relaxed">
-              {document.preview}
-              {document.truncated ? '\n...\n[Inhoud afgesny vir spoed]' : ''}
-            </Text>
-          </ScrollView>
-        </View>
-        {document.fileUrl ? (
-          <Text className="text-xs text-muted mt-2">
-            Publieke skakel gestoor vir latere verwysing.
-          </Text>
-        ) : (
-          <Text className="text-xs text-muted mt-2">
-            Kon nie \'n publieke skakel stoor nie, maar die teks is steeds beskikbaar vir analise.
-          </Text>
-        )}
-      </View>
+      <DocumentPreview
+        name={document.name}
+        size={document.size}
+        mimeType={document.mimeType}
+        preview={document.preview}
+        truncated={document.truncated}
+        fileUrl={document.fileUrl}
+      />
     );
   };
 

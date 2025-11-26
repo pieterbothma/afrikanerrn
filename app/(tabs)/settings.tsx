@@ -4,8 +4,9 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { requestMediaLibraryPermission } from '@/lib/permissions';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import BrutalistCard from '@/components/BrutalistCard';
+import { BackHeader } from '@/components/Header';
 import { supabase } from '@/lib/supabase';
 import { uploadImageToSupabase } from '@/lib/storage';
 import { useUserStore } from '@/store/userStore';
@@ -14,13 +15,38 @@ import { getTodayUsage, USAGE_LIMITS, getUserTier } from '@/lib/usageLimits';
 import { getSubscriptionTier, SubscriptionTier } from '@/lib/revenuecat';
 import { useAppStore } from '@/store/appStore';
 
-const ACCENT = '#B46E3A';
+const ACCENT = '#DE7356'; // Copper
+const CHARCOAL = '#1A1A1A';
 const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
+
+// Section header component
+function SectionHeader({ title, icon }: { title: string; icon: keyof typeof Ionicons.glyphMap }) {
+  return (
+    <View className="flex-row items-center gap-2 mb-3 mt-6 ml-1">
+      <Ionicons name={icon} size={18} color={CHARCOAL} />
+      <Text className="font-bold text-sm text-charcoal uppercase tracking-wider">{title}</Text>
+    </View>
+  );
+}
+
+// Stat card component
+function StatCard({ value, label, icon }: { value: number; label: string; icon: keyof typeof Ionicons.glyphMap }) {
+  return (
+    <View className="flex-1 bg-ivory border-2 border-borderBlack rounded-xl p-4 items-center shadow-brutal-sm">
+      <View className="w-10 h-10 rounded-lg bg-yellow border border-borderBlack items-center justify-center mb-2">
+        <Ionicons name={icon} size={20} color={CHARCOAL} />
+      </View>
+      <Text className="font-black text-2xl text-charcoal">{value}</Text>
+      <Text className="font-bold text-xs text-charcoal/60 mt-1 uppercase">{label}</Text>
+    </View>
+  );
+}
 
 type TonePreset = 'formeel' | 'informeel' | 'vriendelik';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useUserStore((state) => state.user);
   const setUser = useUserStore((state) => state.setUser);
   const resetOnboardingFlag = useAppStore((state) => state.resetOnboardingFlag);
@@ -84,24 +110,6 @@ export default function SettingsScreen() {
     setUsage(usageData);
     setTier(userTier);
     setSubscriptionTier(subTier);
-  };
-
-  const showLimitsPopup = () => {
-    if (!usage) return;
-
-    const planName = tier === 'free' ? 'Gratis' : 'Premium';
-    const limits = USAGE_LIMITS[tier];
-    
-    const message = `Jou ${planName} plan limiete:\n\n` +
-      `• Boodskappe: ${limits.chat} per dag\n` +
-      `• Beeld generasies: ${limits.image_generate} per dag\n` +
-      `• Beeld wysigings: ${limits.image_edit} per dag\n\n` +
-      `Huidige gebruik:\n` +
-      `• Boodskappe: ${usage.chat}/${limits.chat}\n` +
-      `• Beeld generasies: ${usage.image_generate}/${limits.image_generate}\n` +
-      `• Beeld wysigings: ${usage.image_edit}/${limits.image_edit}`;
-
-    Alert.alert('Daglimiete', message, [{ text: 'OK' }]);
   };
 
   const handleUpdateProfile = async () => {
@@ -205,206 +213,234 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1 bg-sand">
+      <BackHeader title="Instellings" />
+
       <ScrollView 
         className="flex-1" 
-        contentContainerStyle={{ gap: 16, paddingHorizontal: 16, paddingTop: 24, paddingBottom: 80 }}
-        showsVerticalScrollIndicator={true}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
       >
-      <View className="rounded-xl bg-card p-6 border border-border">
-        <Text className="font-semibold text-3xl text-foreground">Koedoe</Text>
-        <Text className="mt-2 font-normal text-sm text-muted">Jou profiel</Text>
-        <View className="mt-4 flex-row items-center gap-4">
-          <TouchableOpacity onPress={handlePickAvatar} className="rounded-full border-2 border-border overflow-hidden">
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} className="h-20 w-20" />
-            ) : (
-              <View className="h-20 w-20 items-center justify-center bg-accent">
-                <Ionicons name="person" size={32} color="#FFFFFF" />
+        {/* Profile Section - Hero Card */}
+        <View
+          className="rounded-xl p-6 border-2 border-borderBlack mt-4 bg-ivory shadow-brutal"
+        >
+          <View className="flex-row items-center gap-4">
+            <TouchableOpacity 
+              onPress={handlePickAvatar} 
+              className="relative"
+              activeOpacity={0.8}
+            >
+              <View className="rounded-full border-2 border-borderBlack overflow-hidden">
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} className="h-20 w-20" />
+                ) : (
+                  <View className="h-20 w-20 items-center justify-center bg-yellow">
+                    <Ionicons name="person" size={32} color={CHARCOAL} />
+                  </View>
+                )}
               </View>
-            )}
-          </TouchableOpacity>
-          <View className="flex-1">
+              <View className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-copper items-center justify-center border-2 border-borderBlack">
+                <Ionicons name="camera" size={14} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+            <View className="flex-1">
+              <Text className="font-heading font-black text-2xl text-charcoal">
+                {displayName || 'Jou Naam'}
+              </Text>
+              <Text className="font-medium text-sm text-charcoal/60 mt-0.5">{user?.email ?? 'Geen e-pos'}</Text>
+              <View className="flex-row items-center gap-1 mt-2">
+                <View className={`px-2 py-0.5 rounded-md border border-borderBlack ${subscriptionTier === 'free' ? 'bg-white' : 'bg-yellow'}`}>
+                  <Text className={`text-xs font-bold text-charcoal`}>
+                    {subscriptionTier === 'free' ? 'Gratis' : 'Premium'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+          
+          <View className="mt-4">
+            <Text className="font-bold text-xs text-charcoal uppercase tracking-wider mb-2">Vertoonnaam</Text>
             <TextInput
-              className="rounded-lg border border-border bg-background px-3 py-2.5 font-medium text-base text-foreground"
+              className="rounded-xl border-2 border-borderBlack bg-white px-4 py-3 font-medium text-base text-charcoal"
               placeholder="Vertoonnaam"
               placeholderTextColor="#8E8EA0"
               value={displayName}
               onChangeText={setDisplayName}
             />
-            <Text className="mt-1.5 font-normal text-sm text-muted">{user?.email ?? 'Geen e-pos beskikbaar'}</Text>
           </View>
-        </View>
-        <TouchableOpacity
-          className="mt-4 rounded-xl bg-accent px-4 py-3.5"
-          onPress={handleUpdateProfile}
-          disabled={isUpdating}
-        >
-          {isUpdating ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text className="text-center font-medium text-base text-white">Stoor veranderinge</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <BrutalistCard title="Taaltoon" description="Kies hoe jy wil dat Koedoe met jou praat.">
-        <View className="mt-4 flex-row gap-3">
-          {(['formeel', 'informeel', 'vriendelik'] as TonePreset[]).map((tone) => (
-            <TouchableOpacity
-              key={tone}
-              className={`flex-1 rounded-lg px-4 py-3 ${
-                tonePreset === tone ? 'bg-accent' : 'bg-background border border-border'
-              }`}
-              onPress={() => setTonePreset(tone)}
-            >
-              <Text
-                className={`text-center font-medium text-sm ${tonePreset === tone ? 'text-white' : 'text-foreground'}`}
-              >
-                {tone.charAt(0).toUpperCase() + tone.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </BrutalistCard>
-
-      <BrutalistCard title="Gebruiksstatistieke" description="Sien jou aktiwiteitsomvang.">
-        <View className="mt-4 flex-row justify-between">
-          <View>
-            <Text className="font-semibold text-2xl text-foreground">{sessionCount}</Text>
-            <Text className="mt-1 font-normal text-sm text-muted">Gesprekke</Text>
-          </View>
-          <View>
-            <Text className="font-semibold text-2xl text-foreground">{messages.length}</Text>
-            <Text className="mt-1 font-normal text-sm text-muted">Boodskappe</Text>
-          </View>
-          <View>
-            <Text className="font-semibold text-2xl text-foreground">
-              {messages.filter((m) => m.isFavorite).length}
-            </Text>
-            <Text className="mt-1 font-normal text-sm text-muted">Gunstelinge</Text>
-          </View>
-        </View>
-      </BrutalistCard>
-
-      <BrutalistCard title="Abonnement" description={subscriptionTier === 'free' ? 'Gradeer op na Premium vir hoër limiete.' : 'Jy het Premium toegang.'}>
-        <View className="mt-4">
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="font-semibold text-base text-foreground">Jou plan</Text>
-            <View className="rounded-full bg-accent/10 px-2 py-1">
-              <Text className="font-medium text-xs text-accent uppercase">
-                {subscriptionTier === 'free' ? 'Gratis' : subscriptionTier === 'premium_monthly' ? 'Premium Maandeliks' : 'Premium Jaarliks'}
-              </Text>
-            </View>
-          </View>
+          
           <TouchableOpacity
-            className="rounded-xl bg-accent px-4 py-3.5"
-            onPress={() => router.push('/(tabs)/subscription')}
+            className="mt-4 rounded-xl bg-copper border-2 border-borderBlack py-3.5 shadow-brutal-sm"
+            onPress={handleUpdateProfile}
+            disabled={isUpdating}
+            activeOpacity={0.8}
           >
-            <Text className="text-center font-medium text-base text-white">
-              {subscriptionTier === 'free' ? 'Word Premium Lid' : 'Bestuur Abonnement'}
-            </Text>
+            {isUpdating ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <View className="flex-row items-center justify-center gap-2">
+                <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                <Text className="font-black text-base text-white uppercase">Stoor Veranderinge</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
-      </BrutalistCard>
 
-      {usage && (
-        <TouchableOpacity onPress={showLimitsPopup} activeOpacity={0.7}>
-          <BrutalistCard title="Daglimiete" description="Tik om jou limiete te sien.">
-            <View className="mt-4">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="font-semibold text-base text-foreground">Jou plan</Text>
-              <View className="rounded-full bg-accent/10 px-2 py-1">
-                <Text className="font-medium text-xs text-accent uppercase">
-                  {tier === 'free' ? 'Gratis' : 'Premium'}
+        {/* Statistics Section */}
+        <SectionHeader title="Statistieke" icon="stats-chart" />
+        <View className="flex-row gap-3">
+          <StatCard value={sessionCount} label="Gesprekke" icon="chatbubbles-outline" />
+          <StatCard value={messages.length} label="Boodskappe" icon="document-text-outline" />
+          <StatCard value={messages.filter((m) => m.isFavorite).length} label="Gunstelinge" icon="star-outline" />
+        </View>
+
+        {/* Preferences Section */}
+        <SectionHeader title="Voorkeure" icon="options" />
+        <View className="rounded-xl bg-ivory border-2 border-borderBlack p-4 shadow-brutal-sm">
+          <Text className="font-bold text-base text-charcoal mb-1">Taaltoon</Text>
+          <Text className="font-medium text-sm text-charcoal/60 mb-4">Kies hoe Koedoe met jou praat</Text>
+          <View className="flex-row gap-2">
+            {(['formeel', 'informeel', 'vriendelik'] as TonePreset[]).map((tone) => (
+              <TouchableOpacity
+                key={tone}
+                className={`flex-1 rounded-xl px-3 py-3 border-2 ${
+                  tonePreset === tone ? 'bg-teal border-borderBlack' : 'bg-white border-borderBlack'
+                }`}
+                onPress={() => setTonePreset(tone)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  className={`text-center font-bold text-sm text-charcoal`}
+                >
+                  {tone.charAt(0).toUpperCase() + tone.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Subscription Section */}
+        <SectionHeader title="Abonnement" icon="diamond" />
+        <TouchableOpacity 
+          className="rounded-xl bg-ivory border-2 border-borderBlack p-4 shadow-brutal-sm"
+          onPress={() => router.push('/(tabs)/subscription')}
+          activeOpacity={0.7}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3">
+              <View className="w-12 h-12 rounded-xl bg-yellow border-2 border-borderBlack items-center justify-center">
+                <Ionicons name={subscriptionTier === 'free' ? 'gift-outline' : 'diamond'} size={24} color={CHARCOAL} />
+              </View>
+              <View>
+                <Text className="font-bold text-base text-charcoal">
+                  {subscriptionTier === 'free' ? 'Gratis Plan' : 'Premium Plan'}
+                </Text>
+                <Text className="font-medium text-sm text-charcoal/60">
+                  {subscriptionTier === 'free' ? 'Gradeer op vir meer' : 'Aktief'}
                 </Text>
               </View>
             </View>
-            
-            <View className="gap-4">
-              {(['chat', 'image_generate', 'image_edit'] as const).map((type) => {
-                const current = usage[type];
-                const limit = USAGE_LIMITS[tier][type];
-                const remaining = Math.max(0, limit - current);
-                const percentage = limit > 0 ? (current / limit) * 100 : 0;
-                const isLow = remaining <= limit * 0.2 && remaining > 0;
-                const isExceeded = remaining === 0;
-                
-                const labels = {
-                  chat: 'Boodskappe',
-                  image_generate: 'Beeld generasies',
-                  image_edit: 'Beeld wysigings',
-                };
-                
-                return (
-                  <View key={type} className="gap-2">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="font-medium text-sm text-foreground">{labels[type]}</Text>
-                      <Text
-                        className={`font-semibold text-sm ${
-                          isExceeded ? 'text-red-500' : isLow ? 'text-orange-500' : 'text-foreground'
-                        }`}
-                      >
-                        {current}/{limit}
-                      </Text>
-                    </View>
-                    <View className="h-2 rounded-full bg-muted overflow-hidden">
-                      <View
-                        className={`h-full ${
-                          isExceeded ? 'bg-red-500' : isLow ? 'bg-orange-500' : 'bg-accent'
-                        }`}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
-                      />
-                    </View>
-                    {isLow && !isExceeded && (
-                      <Text className="font-normal text-xs text-orange-500">
-                        {remaining} oor
-                      </Text>
-                    )}
-                    {isExceeded && (
-                      <Text className="font-normal text-xs text-red-500">
-                        Limiet bereik - probeer môre weer
-                      </Text>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
+            <Ionicons name="chevron-forward" size={24} color={CHARCOAL} />
           </View>
-        </BrutalistCard>
-        </TouchableOpacity>
-      )}
-
-      <View className="rounded-xl bg-card p-6 border border-border">
-        <Text className="font-semibold text-xl text-foreground">Rekeningbeheer</Text>
-        <Text className="mt-3 font-normal text-base text-muted">
-          Meld af vanaf hierdie toestel of bestuur later jou toestelle en sessies.
-        </Text>
-
-        <TouchableOpacity
-          className="mt-6 rounded-xl bg-accent px-4 py-3.5"
-          onPress={handleSignOut}
-          disabled={isSigningOut}
-        >
-          <Text className="text-center font-medium text-base text-white">
-            {isSigningOut ? 'Meld tans af…' : 'Meld af'}
-          </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          className="mt-4 rounded-xl border border-border px-4 py-3.5"
-          onPress={handleResetOnboarding}
-        >
-          <Text className="text-center font-medium text-base text-foreground">
-            Begin onboarding weer
-          </Text>
-          <Text className="mt-1 text-center text-xs text-muted">
-            Perfek om iemand nuut die ervaring te wys.
-          </Text>
-        </TouchableOpacity>
-      </View>
+        {/* Usage Section */}
+        {usage && (
+          <>
+            <SectionHeader title="Daglimiete" icon="analytics" />
+            <View className="rounded-xl bg-ivory border-2 border-borderBlack p-4 shadow-brutal-sm">
+              <View className="gap-4">
+                {(['chat', 'image_generate', 'image_edit'] as const).map((type) => {
+                  const current = usage[type];
+                  const limit = USAGE_LIMITS[tier][type];
+                  const remaining = Math.max(0, limit - current);
+                  const percentage = limit > 0 ? (current / limit) * 100 : 0;
+                  const isLow = remaining <= limit * 0.2 && remaining > 0;
+                  const isExceeded = remaining === 0;
+                  
+                  const config = {
+                    chat: { label: 'Boodskappe', icon: 'chatbubble-outline' as const },
+                    image_generate: { label: 'Beeld Generasies', icon: 'brush-outline' as const },
+                    image_edit: { label: 'Beeld Wysigings', icon: 'color-wand-outline' as const },
+                  };
+                  
+                  return (
+                    <View key={type} className="gap-2">
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-row items-center gap-2">
+                          <Ionicons name={config[type].icon} size={16} color={CHARCOAL} />
+                          <Text className="font-bold text-sm text-charcoal">{config[type].label}</Text>
+                        </View>
+                        <Text
+                          className={`font-black text-sm ${
+                            isExceeded ? 'text-errorRed' : isLow ? 'text-copper' : 'text-charcoal'
+                          }`}
+                        >
+                          {current}/{limit}
+                        </Text>
+                      </View>
+                      <View className="h-3 rounded-full bg-white border border-borderBlack overflow-hidden">
+                        <View
+                          className={`h-full ${
+                            isExceeded ? 'bg-errorRed' : isLow ? 'bg-copper' : 'bg-teal'
+                          }`}
+                          style={{ width: `${Math.min(percentage, 100)}%` }}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* Account Section */}
+        <SectionHeader title="Rekening" icon="person-circle" />
+        <View className="gap-3">
+          <TouchableOpacity
+            className="rounded-xl bg-white border-2 border-borderBlack px-4 py-4 flex-row items-center justify-between shadow-brutal-sm"
+            onPress={handleSignOut}
+            disabled={isSigningOut}
+            activeOpacity={0.7}
+          >
+            <View className="flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-lg bg-errorRed/10 border border-errorRed/20 items-center justify-center">
+                <Ionicons name="log-out-outline" size={20} color="#E63946" />
+              </View>
+              <Text className="font-black text-base text-charcoal">
+                {isSigningOut ? 'Meld tans af…' : 'Meld Af'}
+              </Text>
+            </View>
+            {isSigningOut ? (
+              <ActivityIndicator color="#E63946" size="small" />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color={CHARCOAL} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            className="rounded-xl bg-white border-2 border-borderBlack px-4 py-4 flex-row items-center justify-between shadow-brutal-sm"
+            onPress={handleResetOnboarding}
+            activeOpacity={0.7}
+          >
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="refresh-outline" size={22} color={CHARCOAL} />
+              <View>
+                <Text className="font-bold text-base text-charcoal">Herstel Onboarding</Text>
+                <Text className="font-medium text-xs text-charcoal/60">Wys die verwelkomingsgids weer</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={CHARCOAL} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Footer */}
+        <View className="mt-8 items-center">
+          <Text className="font-bold text-xs text-charcoal/40 uppercase tracking-widest">Koedoe AI • v1.0.0</Text>
+        </View>
       </ScrollView>
     </View>
   );
 }
-

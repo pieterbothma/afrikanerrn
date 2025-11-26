@@ -94,7 +94,7 @@ export default function RootLayout() {
       }
 
       if (!inAuthGroup) {
-        router.replace('/(auth)/login');
+        router.replace('/(auth)/welcome');
         return;
       }
     }
