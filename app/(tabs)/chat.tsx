@@ -1,180 +1,76 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  AppState,
+  AppStateStatus,
   KeyboardAvoidingView,
   Platform,
-  RefreshControl,
   View,
   Text,
   TouchableOpacity,
   Image,
   Animated,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { requestCameraPermission, requestMediaLibraryPermission } from '@/lib/permissions';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import ChatBubble from '@/components/ChatBubble';
 import InputBar from '@/components/InputBar';
 import MenuDrawer from '@/components/MenuDrawer';
+import AfricanLandscapeWatermark from '@/components/AfricanLandscapeWatermark';
 import ImageGenerationModal from '@/components/ImageGenerationModal';
 import ImageEditModal from '@/components/ImageEditModal';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { streamAfrikaansMessage, OpenAIChatMessage, identifyImageSubject, answerQuestionAboutDocument } from '@/lib/openai';
+import {
+  streamAfrikaansMessage,
+  OpenAIChatMessage,
+  identifyImageSubject,
+  answerQuestionAboutDocument,
+  generateConversationTitle,
+  extractMemoriesFromConversation,
+} from '@/lib/openai';
 import { uploadImageToSupabase, uploadDocumentToSupabase } from '@/lib/storage';
 import { checkUsageLimit, logUsage, getTodayUsage, USAGE_LIMITS, getUserTier } from '@/lib/usageLimits';
 import { useChatStore, ChatMessage } from '@/store/chatStore';
+import { useMemoryStore } from '@/store/memoryStore';
 import { useUserStore } from '@/store/userStore';
 import { generateUUID } from '@/lib/utils';
 import { track } from '@/lib/analytics';
+import { ChatProvider, useChatContext } from '@/chat/ChatContext';
+import { ChatMessagesList } from '@/chat/components/ChatMessagesList';
 
 const ACCENT = '#DE7356'; // Copper
 const CHARCOAL = '#1A1A1A';
 const SAND = '#E8E2D6';
 const LOGO = require('../../assets/branding/koedoelogo.png');
 const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
+const LAST_SESSION_END_KEY = 'koedoe.lastSessionEnd';
+const SESSION_RESET_THRESHOLD_MS = 1000 * 60 * 5; // 5 minute inactivity pauses trigger a reset
+let hasInitializedChatSession = false;
 
-// Animated prompt suggestion component
-type PromptSuggestionProps = {
-  text: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  disabled: boolean;
-  delay: number;
-};
-
-function PromptSuggestion({ text, icon, onPress, disabled, delay }: PromptSuggestionProps) {
-  const animValue = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(animValue, {
-      toValue: 1,
-      duration: 400,
-      delay,
-      useNativeDriver: true,
-    }).start();
-  }, [animValue, delay]);
-
-  return (
-    <Animated.View
-      style={{
-        opacity: animValue,
-        transform: [{
-          translateY: animValue.interpolate({
-            inputRange: [0, 1],
-            outputRange: [20, 0],
-          }),
-        }],
-      }}
-    >
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={disabled}
-        activeOpacity={0.7}
-        className="rounded-xl bg-ivory border-2 border-borderBlack p-4 flex-row items-center gap-3 shadow-brutal-sm"
-      >
-        <View className="w-9 h-9 rounded-lg bg-yellow border border-borderBlack items-center justify-center">
-          <Ionicons name={icon} size={18} color={CHARCOAL} />
-        </View>
-        <Text className="font-bold text-sm text-charcoal flex-1">
-          {text}
-        </Text>
-        <Ionicons name="arrow-forward-circle" size={24} color={ACCENT} />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-// Welcome state component with animations
-type WelcomeStateProps = {
-  onPromptClick: (prompt: string) => void;
-  isSending: boolean;
-};
-
-function WelcomeState({ onPromptClick, isSending }: WelcomeStateProps) {
-  const cardAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.spring(cardAnim, {
-      toValue: 1,
-      friction: 8,
-      useNativeDriver: true,
-    }).start();
-  }, [cardAnim]);
-
-  const prompts = [
-    { text: "Hoe begin ek 'n klein besigheid?", icon: 'business' as const },
-    { text: "Verduidelik fotosintese eenvoudig.", icon: 'leaf' as const },
-    { text: "Vertel my meer oor Jesus se wonderwerke?", icon: 'book' as const },
-    { text: "Skryf 'n kort gedig oor die natuur.", icon: 'sparkles' as const },
-  ];
-
-  return (
-    <View className="pt-6">
-      {/* Hero Card */}
-      <Animated.View
-        style={{
-          opacity: cardAnim,
-          transform: [{
-            translateY: cardAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [30, 0],
-            }),
-          }],
-        }}
-        className="px-4"
-      >
-        <View
-          className="rounded-2xl p-6 border-3 border-borderBlack bg-yellow shadow-brutal"
-        >
-          <Text className="font-heading font-black text-3xl text-charcoal text-center">
-            Praat, ek luister.
-          </Text>
-          <Text className="mt-3 font-medium text-lg text-charcoal text-center leading-6">
-            Vra oor Huiswerk, Besigheid, die Buitenste Ruim, of enigiets waarmee jy hulp nodig het.
-          </Text>
-          
-          <View className="mt-6 flex-row items-center justify-center gap-3">
-            <View className="h-0.5 flex-1 bg-charcoal/20" />
-            <Text className="text-xs text-charcoal font-bold uppercase tracking-wider">of probeer</Text>
-            <View className="h-0.5 flex-1 bg-charcoal/20" />
-          </View>
-        </View>
-      </Animated.View>
-
-      {/* Prompt Suggestions with staggered animation */}
-      <View className="mt-6 px-4 gap-3">
-        {prompts.map((prompt, index) => (
-          <PromptSuggestion
-            key={prompt.text}
-            text={prompt.text}
-            icon={prompt.icon}
-            onPress={() => onPromptClick(prompt.text)}
-            disabled={isSending}
-            delay={400 + index * 100}
-          />
-        ))}
-      </View>
-
-      {/* Helper text */}
-      <View className="px-8 mt-8 mb-4">
-        <Text className="font-medium text-sm text-charcoal/60 text-center">
-          Gebruik die{' '}
-          <Text className="font-bold text-copper">+</Text>
-          {' '}knoppie vir prentjies, dokumente en kreatiewe krag.
-        </Text>
-      </View>
-    </View>
-  );
-}
+const SAMPLE_PROMPTS = [
+  "🦾 Maak vir my 'n oefenprogram",
+  "🍳 Beplan my maaltye vir die week",
+  "🎓 Help my met studies",
+  "🧾 Skryf vir my 'n dokument",
+];
 
 export default function ChatScreen({ showHeader = true }: { showHeader?: boolean }) {
-  const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  return (
+    <ChatProvider>
+      <ChatScreenContent showHeader={showHeader} />
+    </ChatProvider>
+  );
+}
+
+function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -205,6 +101,28 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
     imageEdit?: { current: number; limit: number; remaining: number };
   }>({});
   const isStartingNewChat = useRef(false);
+  const stopStreamingRef = useRef(false);
+  const { scrollToEnd, setComposerHeight, setMessageSendAnimating, listRef } = useChatContext();
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const memoryContext = useMemo(() => {
+    const safeMemories = Array.isArray(memories) ? memories : [];
+    const segments: string[] = [];
+
+    if (user?.displayName) {
+      segments.push(`Naam: ${user.displayName}`);
+    }
+
+    safeMemories.slice(0, 8).forEach((memory) => {
+      const condensed = memory.content.replace(/\s+/g, ' ').trim();
+      segments.push(`${memory.title}: ${condensed}`);
+    });
+
+    const combined = segments.join(' | ');
+    if (combined.length === 0) {
+      return '';
+    }
+    return combined.length > 800 ? `${combined.slice(0, 800)}...` : combined;
+  }, [memories, user?.displayName]);
 
   const user = useUserStore((state) => state.user);
   const insets = useSafeAreaInsets();
@@ -220,7 +138,36 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
   const setCurrentConversationId = useChatStore((state) => state.setCurrentConversationId);
   const createConversation = useChatStore((state) => state.createConversation);
   const updateConversation = useChatStore((state) => state.updateConversation);
-  const clearMessages = useChatStore((state) => state.clearMessages);
+  const resetChatSession = useChatStore((state) => state.resetSession);
+  const memories = useMemoryStore((state) => state.memories);
+  const loadMemories = useMemoryStore((state) => state.loadMemories);
+  const addMemory = useMemoryStore((state) => state.addMemory);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    if (!hasInitializedChatSession) {
+      hasInitializedChatSession = true;
+      handleNewChat();
+    }
+  }, [handleNewChat, user?.id]);
+
+  useEffect(() => {
+    if (!user) {
+      hasInitializedChatSession = false;
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    loadMemories(user.id);
+  }, [loadMemories, user?.id]);
+
 
   useEffect(() => {
     if (!user?.id) {
@@ -247,14 +194,48 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
   }, [loadMessagesFromSupabase, user?.id, currentConversationId, isSending]);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const wasBackground =
+        appStateRef.current === 'background' || appStateRef.current === 'inactive';
+
+      if (nextState === 'background' || nextState === 'inactive') {
+        AsyncStorage.setItem(LAST_SESSION_END_KEY, Date.now().toString()).catch((error) => {
+          console.warn('Kon nie sessie-einde tyd stoor nie:', error);
+        });
+      } else if (wasBackground && nextState === 'active') {
+        AsyncStorage.getItem(LAST_SESSION_END_KEY)
+          .then((raw) => {
+            if (!raw) {
+              return;
+            }
+            const lastBackground = Number(raw);
+            if (!Number.isNaN(lastBackground)) {
+              const elapsed = Date.now() - lastBackground;
+              if (elapsed >= SESSION_RESET_THRESHOLD_MS) {
+                handleNewChat();
+              }
+            }
+          })
+          .catch((error) => {
+            console.warn('Kon nie sessie-einde tyd lees nie:', error);
+          });
+      }
+
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
+  }, [handleNewChat]);
+
+  useEffect(() => {
     if (messages.length === 0) {
       return;
     }
 
     requestAnimationFrame(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd({ animated: true });
     });
-  }, [messages]);
+  }, [messages, scrollToEnd]);
 
   // Fetch usage info for attachment sheet
   useEffect(() => {
@@ -316,9 +297,17 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
       return;
     }
 
+    // Set sending flag IMMEDIATELY to prevent double-tap
+    setIsSending(true);
+
+    if (messages.length === 0) {
+      setMessageSendAnimating(true);
+    }
+
     // Check usage limit before sending
     const usageCheck = await checkUsageLimit(user.id, 'chat');
     if (!usageCheck.allowed) {
+      setIsSending(false); // Reset on limit failure
       Alert.alert(
         'Daglimiet bereik',
         `Jy het jou daglimiet van ${usageCheck.limit} boodskappe bereik. Probeer môre weer of oorweeg om op te gradeer na premium.`,
@@ -331,9 +320,6 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
 
     let conversationId = currentConversationId;
     const isNewConversation = !conversationId;
-    
-    // Set sending flag early to prevent useEffect from reloading
-    setIsSending(true);
     
     if (!conversationId) {
       conversationId = await createConversation(user.id);
@@ -372,19 +358,85 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
         : documentToSend
           ? 'Dokument gelaai'
           : 'Nuwe gesprek';
-      const title =
-        trimmed.length > 0
-          ? trimmed.length > 60
-            ? trimmed.substring(0, 60) + '...'
-            : trimmed
-          : fallbackTitle;
-      await updateConversation(conversationId, title);
+
+      let resolvedTitle = fallbackTitle;
+
+      if (trimmed.length > 0) {
+        try {
+          const generated = await generateConversationTitle(trimmed);
+          if (generated) {
+            resolvedTitle = generated;
+          }
+        } catch (error) {
+          console.warn('Kon nie gesprekstitel genereer nie:', error);
+          resolvedTitle = trimmed.length > 60 ? `${trimmed.substring(0, 60)}...` : trimmed;
+        }
+      }
+
+      await updateConversation(conversationId, resolvedTitle);
     }
 
     await saveMessageToSupabase(userMessage, user.id);
     
     // Log usage after successful message save
     await logUsage(user.id, 'chat');
+
+    if (trimmed.length > 0) {
+      try {
+        const recentMessages = useChatStore
+          .getState()
+          .messages.slice(-10)
+          .map<OpenAIChatMessage>((msg) => ({
+            role: msg.role,
+            content:
+              msg.content && msg.content.length > 0
+                ? msg.content
+                : msg.imageUri
+                  ? '(Beeld gestuur)'
+                  : msg.documentUrl
+                    ? '(Dokument gestuur)'
+                    : '',
+          }))
+          .filter((msg) => msg.content.length > 0);
+
+        const extractedMemories = await extractMemoriesFromConversation(
+          recentMessages,
+          trimmed,
+        );
+
+        if (extractedMemories.length > 0 && user?.id) {
+          const memoryState = useMemoryStore.getState();
+          const seenTitles = new Set(
+            memoryState.memories.map((memory) => memory.title.toLowerCase()),
+          );
+          const seenContents = new Set(
+            memoryState.memories.map((memory) => memory.content.toLowerCase()),
+          );
+
+          let savedCount = 0;
+
+          for (const memory of extractedMemories.slice(0, 2)) {
+            const titleKey = memory.title.toLowerCase();
+            const contentKey = memory.content.toLowerCase();
+            if (seenTitles.has(titleKey) || seenContents.has(contentKey)) {
+              continue;
+            }
+            const saved = await addMemory(user.id, memory);
+            if (saved) {
+              seenTitles.add(titleKey);
+              seenContents.add(contentKey);
+              savedCount += 1;
+            }
+          }
+
+          if (savedCount > 0) {
+            track('memory_auto_saved', { count: savedCount });
+          }
+        }
+      } catch (error) {
+        console.warn('Kon nie nuwe herinneringe outomaties stoor nie:', error);
+      }
+    }
 
     const assistantMessageId = generateUUID();
     const assistantMessage: ChatMessage = {
@@ -439,13 +491,56 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
                     : '',
           }));
 
+        // Throttled streaming for smooth text appearance
+        let buffer = '';
         let fullContent = '';
-        for await (const chunk of streamAfrikaansMessage(history, user.tonePreset || 'informeel')) {
-          fullContent += chunk;
-          updateMessage(assistantMessageId, { content: fullContent });
+        const THROTTLE_MS = 50;
+        let streamEnded = false;
+        let wasStopped = false;
+        
+        // Reset stop flag at start
+        stopStreamingRef.current = false;
+
+        const flushBuffer = () => {
+          if (buffer.length > 0) {
+            // Release characters in small batches for smooth appearance
+            const charsToRelease = Math.max(1, Math.ceil(buffer.length / 3));
+            fullContent += buffer.slice(0, charsToRelease);
+            buffer = buffer.slice(charsToRelease);
+            updateMessage(assistantMessageId, { content: fullContent });
+          }
+        };
+
+        const interval = setInterval(flushBuffer, THROTTLE_MS);
+
+        try {
+          for await (const chunk of streamAfrikaansMessage(
+            history,
+            user.tonePreset || 'informeel',
+            memoryContext,
+          )) {
+            // Check if user requested to stop
+            if (stopStreamingRef.current) {
+              wasStopped = true;
+              break;
+            }
+            buffer += chunk;
+          }
+          streamEnded = true;
+        } finally {
+          clearInterval(interval);
+          // Flush any remaining buffer
+          if (buffer.length > 0) {
+            fullContent += buffer;
+            buffer = '';
+            updateMessage(assistantMessageId, { content: fullContent });
+          }
         }
 
-        await saveMessageToSupabase({ ...assistantMessage, content: fullContent }, user.id);
+        // Save whatever content we got (even if stopped early)
+        if (fullContent.length > 0) {
+          await saveMessageToSupabase({ ...assistantMessage, content: fullContent }, user.id);
+        }
       }
     } catch (error) {
       console.error('Kon nie boodskap stuur nie:', error);
@@ -468,33 +563,24 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
     setIsRefreshing(false);
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     if (!user?.id) {
       return;
     }
 
     // Set flag to prevent useEffect from reloading messages
     isStartingNewChat.current = true;
-    
-    // Clear current conversation ID
-    setCurrentConversationId(null);
-    
-    // Clear all messages from the store
-    clearMessages();
-    
-    // Clear input field
+    resetChatSession();
     setInput('');
     setPendingImage(null);
     setPendingDocument(null);
     
     // Scroll to top immediately
     requestAnimationFrame(() => {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
     });
-    
-    // Note: A new conversation will be created automatically when the user sends their first message
-    // This ensures we start with a completely fresh, empty chat
-  };
+    setMessageSendAnimating(false);
+  }, [listRef, resetChatSession, setInput, setPendingDocument, setPendingImage, setMessageSendAnimating, user?.id]);
 
   const handlePromptClick = async (prompt: string) => {
     if (!user?.id || isSending) {
@@ -788,7 +874,7 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
         await updateConversation(conversationId, 'Dokument gelaai');
       }
 
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd({ animated: true });
       track('document_upload_completed');
     } catch (error: any) {
       console.error('[ChatScreen] Kon nie dokument laai nie:', error);
@@ -890,7 +976,7 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
         await updateConversation(conversationId, 'Foto gelaai');
       }
 
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd({ animated: true });
       track('identify_photo_completed');
     } catch (error: any) {
       console.error('[ChatScreen] Kon nie foto laai nie:', error);
@@ -930,7 +1016,7 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
         await updateConversation(conversationId, 'AI-beeld geskep');
       }
 
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd({ animated: true });
     } catch (error) {
       console.error('Kon nie beeld generasie verwerk nie:', error);
       track('image_generation_failed');
@@ -969,7 +1055,7 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
         await updateConversation(conversationId, 'Beeld gewysig');
       }
 
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollToEnd({ animated: true });
     } catch (error) {
       console.error('Kon nie beeld wysiging verwerk nie:', error);
       track('image_edit_failed');
@@ -977,80 +1063,93 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
     }
   };
 
+  const promptSuggestions = SAMPLE_PROMPTS;
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#E8E2D6' }}
+      style={{ flex: 1, backgroundColor: SAND }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight : 0}
     >
-      <View className="flex-1 bg-background">
-        {/* Header Bar */}
+      <View style={{ flex: 1 }}>
         {showHeader && (
-        <View
-          className="flex-row items-end justify-between px-4 pb-4 border-b-3 border-borderBlack bg-sand"
-          style={{ paddingTop: Math.max(insets.top, 20) + 12 }}
-        >
-          <TouchableOpacity 
-            onPress={() => setShowMenuDrawer(true)} 
-            className="w-10 h-10 bg-teal rounded-lg border-2 border-borderBlack items-center justify-center"
-          >
-            <Ionicons name="menu" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          
-          {/* Logo - Centered */}
-          <View className="flex-1 items-center justify-center px-4">
-            <Image
-              source={LOGO}
-              style={{ height: 60, width: 60, resizeMode: 'contain' }}
-            />
-            <Text className="font-heading font-black text-xl text-charcoal -mt-1">
-              Klets
-            </Text>
+          <View className="bg-sand z-10" style={{ paddingTop: Math.max(insets.top + 4, 16) }}>
+            <View className="flex-row items-center justify-between px-4 pb-3">
+              <View className="w-12 items-start">
+                <TouchableOpacity
+                  onPress={() => setShowMenuDrawer(true)}
+                  className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
+                >
+                  <Ionicons name="menu" size={22} color="#1A1A1A" />
+                </TouchableOpacity>
+              </View>
+              <View className="flex-row items-center gap-2 bg-yellow/20 px-3 py-1 rounded-xl border-2 border-transparent">
+                <Image source={LOGO} style={{ height: 24, width: 24, resizeMode: 'contain' }} />
+                <Text className="font-heading font-black text-lg text-charcoal">Klets</Text>
+              </View>
+              <View className="w-12 items-end">
+                <TouchableOpacity
+                  onPress={handleNewChat}
+                  className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
+                >
+                  <Ionicons name="create-outline" size={22} color="#1A1A1A" />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View className="border-b-2 border-charcoal w-full opacity-10" />
           </View>
+        )}
+
+        <View style={{ flex: 1 }}>
+          <AfricanLandscapeWatermark size={280} opacity={0.06} />
           
-          <TouchableOpacity 
-            onPress={handleNewChat} 
-            className="w-10 h-10 bg-teal rounded-lg border-2 border-borderBlack items-center justify-center"
-          >
-            <Ionicons name="pencil" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+          {messages.length === 0 ? (
+            <ScrollView 
+              className="flex-1"
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
+            >
+              <View className="bg-yellow p-5 rounded-2xl border-2 border-charcoal shadow-brutal self-start max-w-[85%] mb-8 transform rotate-1">
+                 <Text className="text-charcoal text-lg leading-6 font-bold">
+                   Hallo! Waarmee kan ek jou help vandag? 😊
+                 </Text>
+              </View>
+  
+              <Text className="text-charcoal font-black mb-4 ml-1 text-lg uppercase tracking-wide">Probeer hierdie idees</Text>
+              
+              <View className="flex-row flex-wrap gap-3">
+                {promptSuggestions.map((prompt) => (
+                  <TouchableOpacity
+                    key={prompt}
+                    onPress={() => handlePromptClick(prompt)}
+                    disabled={isSending}
+                    activeOpacity={0.7}
+                    className="px-5 py-3 rounded-full border-2 border-charcoal bg-white mb-2 flex-row items-center shadow-brutal-sm active:translate-y-[2px] active:shadow-none"
+                    style={{ opacity: isSending ? 0.6 : 1 }}
+                  >
+                    <Text className="text-sm font-bold text-charcoal">{prompt}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          ) : (
+            <ChatMessagesList
+              messages={messages}
+              ListEmptyComponent={null}
+              isRefreshing={isRefreshing}
+              onRefresh={handleRefresh}
+            />
+          )}
         </View>
-        )}
-
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item, index) => `${item.id}-${item.createdAt}-${index}`}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingTop: 16,
-            paddingBottom: 16,
-          }}
-          style={{ flex: 1 }}
-          contentInset={{ bottom: tabBarHeight + insets.bottom + 72 }}
-          scrollIndicatorInsets={{ bottom: tabBarHeight + insets.bottom + 72 }}
-          renderItem={({ item }) => <ChatBubble message={item} />}
-          ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-          ListEmptyComponent={
-            <WelcomeState 
-              onPromptClick={handlePromptClick} 
-              isSending={isSending} 
-            />
-          }
-          refreshControl={<RefreshControl tintColor={ACCENT} refreshing={isRefreshing} onRefresh={handleRefresh} />}
-        />
-
-        {isSending && (
-          <View className="flex-row items-center justify-center py-2">
-            <ActivityIndicator color={ACCENT} size="small" />
-            <Text className="ml-2 text-sm text-charcoal font-medium">Koedoe dink…</Text>
-          </View>
-        )}
 
         <InputBar
           value={input}
           onChangeText={setInput}
           onSend={handleSend}
+          onStop={() => {
+            stopStreamingRef.current = true;
+            track('chat_stream_stopped');
+          }}
           onTakePhoto={handleTakePhoto}
           onEditPhoto={handleEditPhoto}
           onAddFiles={handleAddFiles}
@@ -1114,33 +1213,34 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
             }
           }}
           usageInfo={usageInfo}
+          onComposerLayout={setComposerHeight}
         />
-
-        <MenuDrawer visible={showMenuDrawer} onClose={() => setShowMenuDrawer(false)} />
-
-        {user?.id && (
-          <>
-            <ImageGenerationModal
-              visible={showCreateImageModal}
-              onClose={() => setShowCreateImageModal(false)}
-              onImageGenerated={handleImageGenerated}
-              userId={user.id}
-              messageId={generateUUID()}
-            />
-            <ImageEditModal
-              visible={showEditImageModal}
-              onClose={() => {
-                setShowEditImageModal(false);
-                setSelectedImageForEdit(undefined);
-              }}
-              onImageEdited={handleImageEdited}
-              userId={user.id}
-              messageId={generateUUID()}
-              existingImageUri={selectedImageForEdit}
-            />
-          </>
-        )}
       </View>
+
+      <MenuDrawer visible={showMenuDrawer} onClose={() => setShowMenuDrawer(false)} />
+
+      {user?.id && (
+        <>
+          <ImageGenerationModal
+            visible={showCreateImageModal}
+            onClose={() => setShowCreateImageModal(false)}
+            onImageGenerated={handleImageGenerated}
+            userId={user.id}
+            messageId={generateUUID()}
+          />
+          <ImageEditModal
+            visible={showEditImageModal}
+            onClose={() => {
+              setShowEditImageModal(false);
+              setSelectedImageForEdit(undefined);
+            }}
+            onImageEdited={handleImageEdited}
+            userId={user.id}
+            messageId={generateUUID()}
+            existingImageUri={selectedImageForEdit}
+          />
+        </>
+      )}
     </KeyboardAvoidingView>
   );
 }

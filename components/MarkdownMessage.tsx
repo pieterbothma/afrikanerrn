@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Platform, StyleSheet, Text, TextStyle, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 type MarkdownBlock =
   | { type: 'heading'; level: number; text: string }
@@ -32,14 +33,24 @@ const COLORS = {
 
 export default function MarkdownMessage({ content, isUser }: MarkdownMessageProps) {
   const blocks = useMemo(() => parseMarkdown(content), [content]);
-  
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = 0.3;
+    opacity.value = withTiming(1, { duration: 220 });
+  }, [content, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
   const theme = isUser ? COLORS.user : COLORS.bot;
   const textColor = theme.text;
   const subtleColor = theme.subtle;
   const accentColor = theme.accent;
 
   return (
-    <View>
+    <Animated.View style={animatedStyle}>
       {blocks.map((block, index) => {
         switch (block.type) {
           case 'heading':
@@ -95,7 +106,7 @@ export default function MarkdownMessage({ content, isUser }: MarkdownMessageProp
             return null;
         }
       })}
-    </View>
+    </Animated.View>
   );
 }
 

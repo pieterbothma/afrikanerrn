@@ -126,3 +126,40 @@ alter table public.messages add column if not exists document_name text;
 alter table public.messages add column if not exists document_mime_type text;
 alter table public.messages add column if not exists document_size integer;
 
+-- Memories table for storing user-specific facts and preferences
+create table if not exists public.memories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  type text not null check (type in ('profile', 'preference', 'fact')),
+  title text not null,
+  content text not null,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create index if not exists idx_memories_user on public.memories (user_id, created_at desc);
+
+alter table public.memories enable row level security;
+
+create policy "Self: select memories"
+  on public.memories
+  for select
+  using (auth.uid() = user_id);
+
+create policy "Self: insert memories"
+  on public.memories
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "Self: update memories"
+  on public.memories
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Self: delete memories"
+  on public.memories
+  for delete
+  using (auth.uid() = user_id);
+

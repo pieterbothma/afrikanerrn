@@ -1,10 +1,9 @@
-import { useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
+import type { TextInput } from "react-native";
 import {
   ActivityIndicator,
   Image,
-  Keyboard,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   Animated,
@@ -12,12 +11,12 @@ import {
   Platform,
   UIManager,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { track } from "@/lib/analytics";
 import { formatBytes } from "@/lib/utils";
 import AttachmentSheet, { AttachmentAction } from "./AttachmentSheet";
 import DocumentPreview from "./DocumentPreview";
+import { TextInputWrapper } from "./TextInputWrapper";
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -32,6 +31,7 @@ type InputBarProps = {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
+  onStop?: () => void;
   onTakePhoto?: () => void;
   onEditPhoto?: () => void;
   onAddFiles?: () => void;
@@ -63,16 +63,19 @@ type InputBarProps = {
     imageGenerate?: { current: number; limit: number; remaining: number };
     imageEdit?: { current: number; limit: number; remaining: number };
   };
+  onComposerLayout?: (height: number) => void;
 };
 
-// Animated send button with pulse effect when ready
+// Animated send/stop button with pulse effect when ready
 function AnimatedSendButton({
-  onPress,
+  onSend,
+  onStop,
   disabled,
   isSending,
   isReady,
 }: {
-  onPress: () => void;
+  onSend: () => void;
+  onStop?: () => void;
   disabled: boolean;
   isSending: boolean;
   isReady: boolean;
@@ -120,6 +123,14 @@ function AnimatedSendButton({
     }).start();
   };
 
+  const handlePress = () => {
+    if (isSending && onStop) {
+      onStop();
+    } else {
+      onSend();
+    }
+  };
+
   return (
     <Animated.View
       style={{
@@ -129,19 +140,21 @@ function AnimatedSendButton({
       }}
     >
       <TouchableOpacity
-        className="rounded-full bg-copper w-10 h-10 items-center justify-center border-2 border-borderBlack"
-        onPress={onPress}
+        className={`rounded-full w-12 h-12 items-center justify-center border-2 border-charcoal ${
+          isSending ? 'bg-charcoal' : 'bg-copper'
+        }`}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        disabled={disabled}
-        accessibilityLabel="Stuur boodskap"
+        disabled={disabled && !isSending}
+        accessibilityLabel={isSending ? "Stop antwoord" : "Stuur boodskap"}
         activeOpacity={1}
         style={{
-          opacity: disabled ? 0.5 : 1,
+          opacity: (disabled && !isSending) ? 0.5 : 1,
         }}
       >
         {isSending ? (
-          <ActivityIndicator color="#F7F3EE" size="small" />
+          <Ionicons name="stop" size={18} color="#F7F3EE" />
         ) : (
           <Ionicons name="arrow-up" size={20} color="#F7F3EE" />
         )}
@@ -251,6 +264,7 @@ export default function InputBar({
   value,
   onChangeText,
   onSend,
+  onStop,
   onTakePhoto,
   onEditPhoto,
   onAddFiles,
@@ -264,27 +278,16 @@ export default function InputBar({
   onClearPendingDocument,
   onRetryDocumentUpload,
   usageInfo,
+  onComposerLayout,
 }: InputBarProps) {
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const insets = useSafeAreaInsets();
   const textInputRef = useRef<TextInput>(null);
-  const borderAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const showSubscription = Keyboard.addListener("keyboardDidShow", () => {
-      setIsKeyboardVisible(true);
-    });
-    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => {
-      setIsKeyboardVisible(false);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
+  const handlePaste = useCallback((text: string) => {
+    track("chat_input_paste_detected", { length: text.length });
   }, []);
+
+  const borderAnim = useRef(new Animated.Value(0)).current;
 
   // Animate border on focus
   useEffect(() => {
@@ -353,9 +356,7 @@ export default function InputBar({
   return (
     <View
       className="px-4 pb-4 pt-2 bg-transparent"
-      style={{
-        marginBottom: isKeyboardVisible ? 0 : Math.max(insets.bottom + 12, 24),
-      }}
+      onLayout={(event) => onComposerLayout?.(event.nativeEvent.layout.height)}
     >
       {/* Pending Image Preview */}
       {pendingImage && (
@@ -491,35 +492,38 @@ export default function InputBar({
 
       {/* Input Row */}
       <View 
-        className="flex-row items-end bg-white rounded-3xl border-3 border-borderBlack shadow-brutal-sm overflow-hidden pl-3 pr-2 py-2"
+        className="flex-row items-center bg-white rounded-full border-2 border-charcoal shadow-brutal mx-4 mb-2 pl-3 pr-2 py-1.5"
       >
-        <View className="mb-1 mr-2">
+        <View className="mr-2 flex-shrink-0">
           <TouchableOpacity
             onPress={handleAttachmentPress}
-            className="w-8 h-8 items-center justify-center rounded-full bg-charcoal"
+            className="w-10 h-10 items-center justify-center rounded-full bg-yellow border-2 border-charcoal active:scale-95"
           >
-            <Ionicons name="add" size={20} color="#FFF" />
+            <Ionicons name="add" size={24} color="#1A1A1A" />
           </TouchableOpacity>
         </View>
 
-        <TextInput
+        <TextInputWrapper
+          style={{ flex: 1 }}
           ref={textInputRef}
-          className="flex-1 font-medium text-base text-charcoal min-h-[40px] max-h-[100px] pt-2.5 pb-2.5"
+          className="font-bold text-base text-charcoal min-h-[40px] max-h-[100px] py-2"
           placeholder="Vra Koedoe..."
-          placeholderTextColor="#8E8EA0"
+          placeholderTextColor="#1A1A1A80"
           value={value}
           onChangeText={onChangeText}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           multiline
+          onPaste={handlePaste}
           textAlignVertical="center"
           autoCorrect
           autoCapitalize="sentences"
         />
 
-        <View className="mb-0.5">
+        <View className="ml-2 flex-shrink-0">
           <AnimatedSendButton
-            onPress={handleSend}
+            onSend={handleSend}
+            onStop={onStop}
             disabled={isDisabled}
             isSending={isSending}
             isReady={isReady}

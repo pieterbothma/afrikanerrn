@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { fetch as expoFetch } from "expo/fetch";
 import * as FileSystem from "expo-file-system/legacy";
+import type { MemoryType } from "@/lib/memories";
 
 const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 const geminiApiKey =
@@ -107,6 +108,12 @@ export type OpenAIChatMessage = {
   content: string;
 };
 
+export type ExtractedMemory = {
+  type: MemoryType;
+  title: string;
+  content: string;
+};
+
 const KOEDOE_SYSTEM_PROMPT = `Jy is Koedoe, 'n Afrikaans-eerste KI-assistent wat natuurlike, moderne, korrekte Afrikaans gebruik. Volg hierdie reëls:
 
 Taal:
@@ -156,7 +163,8 @@ Doel:
 - Wees die gebruiker se Afrikaanse hulpbrein, skryfassistent, studievennoot, kode-maat en kreatiewe sidekick. Vinnig, duidelik, suiwer Afrikaans.`;
 
 const getSystemMessage = (
-  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel"
+  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel",
+  memoryContext?: string
 ): OpenAIChatMessage => {
   const toneAdjustments = {
     formeel:
@@ -167,15 +175,173 @@ const getSystemMessage = (
       "Wees baie vriendelik, entoesiasties en ondersteunend met 'n warm, toeganklike toon.",
   };
 
+  const memorySection =
+    memoryContext && memoryContext.trim().length > 0
+      ? `\n\nGEBRUIKER-INLIGTING:\n${memoryContext.trim()}`
+      : "";
+
   return {
     role: "system",
-    content: `${KOEDOE_SYSTEM_PROMPT}\n\nTone: ${toneAdjustments[tonePreset]}`,
+    content: `${KOEDOE_SYSTEM_PROMPT}\n\nTone: ${
+      toneAdjustments[tonePreset]
+    }${memorySection}`,
   };
 };
 
+export async function generateConversationTitle(question: string): Promise<string> {
+  if (!apiKey) {
+    throw new Error(
+      "OpenAI API key nie gestel nie. Voeg EXPO_PUBLIC_OPENAI_API_KEY by jou omgewing."
+    );
+  }
+
+  const cleanedQuestion = question.trim().replace(/\s+/g, " ").slice(0, 200);
+  if (!cleanedQuestion) {
+    return "Nuwe gesprek";
+  }
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "Jy genereer ultra-kort, beskrywende Afrikaanse gesprekstitels. Maksimum 6 woorde, geen aanhalingstekens of leestekens aan die einde. Moenie emojis gebruik nie.",
+      },
+      {
+        role: "user",
+        content: `Skep 'n titel vir hierdie vraag:\n\n"${cleanedQuestion}"\n\nTitel:`,
+      },
+    ],
+    temperature: 0.4,
+    max_tokens: 32,
+  });
+
+  const rawContent = response.choices?.[0]?.message?.content;
+  let title: string | null = null;
+
+  if (typeof rawContent === "string") {
+    title = rawContent.trim();
+  } else if (Array.isArray(rawContent)) {
+    title = rawContent
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if (part && typeof part === "object" && "text" in part) {
+          return (part as { text?: string }).text ?? "";
+        }
+        return "";
+      })
+      .join(" ")
+      .trim();
+  }
+
+  if (!title || title.length === 0) {
+    throw new Error("Geen gesprekstitel van OpenAI ontvang nie.");
+  }
+
+  const sanitized = title.replace(/[\"“”]/g, "").replace(/\.+$/, "").trim();
+  return sanitized.length > 0 ? sanitized : "Nuwe gesprek";
+}
+
+const MEMORY_SCHEMA = {
+  type: "object",
+  properties: {
+    memories: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["profile", "preference", "fact"] },
+          title: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["type", "title", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["memories"],
+  additionalProperties: false,
+} as const;
+
+const MEMORY_EXTRACTION_PROMPT = `Jy identifiseer feite oor 'n gebruiker wat nuttig is vir toekomstige gesprekke.
+- Stoor slegs langtermyn inligting (profiel, voorkeure, of belangrike feite).
+- Ignoreer tydelike versoeke of inligting oor ander mense.
+- Gebruik Afrikaans en wees bondig: 'title' moet kort wees; 'content' moet die feit verduidelik.
+- As daar niks bruikbaar is nie, antwoord met 'memories': [].
+`;
+
+export async function extractMemoriesFromConversation(
+  history: OpenAIChatMessage[],
+  latestUserMessage: string,
+): Promise<ExtractedMemory[]> {
+  if (!apiKey) {
+    throw new Error(
+      "OpenAI API key nie gestel nie. Voeg EXPO_PUBLIC_OPENAI_API_KEY by jou omgewing."
+    );
+  }
+
+  const boundedHistory = history.slice(-10);
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "memory_extractor",
+        schema: MEMORY_SCHEMA,
+      },
+    },
+    messages: [
+      { role: "system", content: MEMORY_EXTRACTION_PROMPT },
+      ...boundedHistory,
+      {
+        role: "user",
+        content: `NUWE BOODSKAP: ${latestUserMessage}`,
+      },
+    ],
+  });
+
+  const rawContent = response.choices?.[0]?.message?.content;
+  if (!rawContent) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawContent);
+    if (!Array.isArray(parsed?.memories)) {
+      return [];
+    }
+    return parsed.memories
+      .filter(
+        (item: any) =>
+          item &&
+          typeof item.title === "string" &&
+          item.title.trim().length > 0 &&
+          typeof item.content === "string" &&
+          item.content.trim().length > 0 &&
+          ["profile", "preference", "fact"].includes(item.type)
+      )
+      .map(
+        (item: any): ExtractedMemory => ({
+          type: item.type as MemoryType,
+          title: item.title.trim(),
+          content: item.content.trim(),
+        })
+      );
+  } catch (error) {
+    console.warn("Kon nie geheue-ekstraksie JSON parseer nie:", error);
+    return [];
+  }
+}
+
 export async function sendAfrikaansMessage(
   messages: OpenAIChatMessage[],
-  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel"
+  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel",
+  memoryContext?: string
 ): Promise<string> {
   if (!apiKey) {
     throw new Error(
@@ -186,7 +352,7 @@ export async function sendAfrikaansMessage(
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5.1",
-      messages: [getSystemMessage(tonePreset), ...messages].map((message) => ({
+      messages: [getSystemMessage(tonePreset, memoryContext), ...messages].map((message) => ({
         role: message.role,
         content: message.content,
       })),
@@ -233,7 +399,8 @@ export async function sendAfrikaansMessage(
 
 export async function* streamAfrikaansMessage(
   messages: OpenAIChatMessage[],
-  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel"
+  tonePreset: "formeel" | "informeel" | "vriendelik" = "informeel",
+  memoryContext?: string
 ): AsyncGenerator<string, void, unknown> {
   if (!apiKey) {
     throw new Error(
@@ -244,7 +411,7 @@ export async function* streamAfrikaansMessage(
   try {
     const stream = await openai.chat.completions.create({
       model: "gpt-5.1",
-      messages: [getSystemMessage(tonePreset), ...messages].map((message) => ({
+      messages: [getSystemMessage(tonePreset, memoryContext), ...messages].map((message) => ({
         role: message.role,
         content: message.content,
       })),

@@ -1,4 +1,6 @@
-import { Image, Text, TouchableOpacity, View, Alert, Linking } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Image, Text, TouchableOpacity, View, Alert, Linking, Animated as RNAnimated } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { ChatMessage } from '@/store/chatStore';
@@ -7,9 +9,82 @@ import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { formatBytes } from '@/lib/utils';
 import MarkdownMessage from './MarkdownMessage';
+import { useFirstMessageAnimation } from '@/chat/hooks/useFirstMessageAnimation';
+import { useAssistantIntroAnimation } from '@/chat/hooks/useAssistantIntroAnimation';
+
+// Animated typing dots indicator
+function TypingIndicator() {
+  const dot1 = useRef(new RNAnimated.Value(0)).current;
+  const dot2 = useRef(new RNAnimated.Value(0)).current;
+  const dot3 = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    const animateDot = (dot: RNAnimated.Value, delay: number) => {
+      return RNAnimated.loop(
+        RNAnimated.sequence([
+          RNAnimated.delay(delay),
+          RNAnimated.timing(dot, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          RNAnimated.timing(dot, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+    };
+
+    const anim1 = animateDot(dot1, 0);
+    const anim2 = animateDot(dot2, 150);
+    const anim3 = animateDot(dot3, 300);
+
+    anim1.start();
+    anim2.start();
+    anim3.start();
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      anim3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  const dotStyle = (anim: RNAnimated.Value) => ({
+    transform: [
+      {
+        translateY: anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -4],
+        }),
+      },
+    ],
+    opacity: anim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.4, 1],
+    }),
+  });
+
+  return (
+    <View className="flex-row items-center gap-1 py-1">
+      <RNAnimated.View
+        style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#DE7356' }, dotStyle(dot1)]}
+      />
+      <RNAnimated.View
+        style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#DE7356' }, dotStyle(dot2)]}
+      />
+      <RNAnimated.View
+        style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#DE7356' }, dotStyle(dot3)]}
+      />
+    </View>
+  );
+}
 
 type ChatBubbleProps = {
   message: ChatMessage;
+  index: number;
 };
 
 const ACCENT_COLOR = '#DE7356'; // Copper
@@ -28,12 +103,32 @@ const formatTimestamp = (iso: string) => {
   }
 };
 
-export default function ChatBubble({ message }: ChatBubbleProps) {
+export default function ChatBubble({ message, index }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const timestamp = formatTimestamp(message.createdAt);
   const user = useUserStore((state) => state.user);
   const updateMessage = useChatStore((state) => state.updateMessage);
   const saveMessageToSupabase = useChatStore((state) => state.saveMessageToSupabase);
+  const [imageAspectRatio, setImageAspectRatio] = useState(1);
+
+  const imageSource = message.previewUri || message.imageUri;
+  const hasDocument = message.documentUrl && message.documentName;
+
+  useEffect(() => {
+    if (imageSource) {
+      Image.getSize(
+        imageSource,
+        (width, height) => {
+          if (width && height) {
+            setImageAspectRatio(width / height);
+          }
+        },
+        (error) => {
+          console.log('Failed to get image size:', error);
+        }
+      );
+    }
+  }, [imageSource]);
 
   const handleToggleFavorite = async () => {
     if (!user?.id) {
@@ -88,9 +183,6 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
     );
   };
 
-  const imageSource = message.previewUri || message.imageUri;
-  const hasDocument = message.documentUrl && message.documentName;
-
   const handleDocumentPress = async () => {
     if (message.documentUrl) {
       try {
@@ -110,23 +202,38 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
   // Text colors for icons
   const iconColor = isUser ? TEXT_COLOR_USER : ACCENT_COLOR;
 
+  const isFirstUserMessage = isUser && index === 0;
+  const isFirstAssistantMessage = !isUser && index === 1;
+  const { style: userAnimationStyle, didUserMessageAnimate } = useFirstMessageAnimation({
+    disabled: !isFirstUserMessage,
+  });
+  const { style: assistantAnimationStyle } = useAssistantIntroAnimation({
+    disabled: !isFirstAssistantMessage,
+    trigger: didUserMessageAnimate,
+  });
+  const animatedStyle = isUser ? userAnimationStyle : assistantAnimationStyle;
+
   return (
     <View className={`w-full my-2 ${isUser ? 'items-end' : 'items-start'}`}>
-    <TouchableOpacity
-      onLongPress={handleLongPress}
-      activeOpacity={0.8}
-        className={`max-w-[85%] rounded-2xl px-4 py-3 border-2 border-borderBlack ${
-          isUser ? 'bg-copper rounded-tr-sm' : 'bg-ivory rounded-tl-sm'
-        }`}
-      >
+      <Animated.View style={animatedStyle}>
+        <TouchableOpacity
+          onLongPress={handleLongPress}
+          activeOpacity={0.8}
+          className={`max-w-[85%] rounded-2xl px-4 py-3 border-2 border-borderBlack ${
+            isUser ? 'bg-copper rounded-tr-sm' : 'bg-ivory rounded-tl-sm'
+          }`}
+        >
         {/* Media attachments shown first */}
         {imageSource ? (
           <View className="mb-3 overflow-hidden rounded-xl border-2 border-black/10 bg-black/5">
             <Image
               source={{ uri: imageSource }}
               className="w-full"
-              style={{ height: 300, maxHeight: 400 }}
-              resizeMode="contain"
+              style={{ 
+                aspectRatio: imageAspectRatio,
+                maxHeight: 400 
+              }}
+              resizeMode="cover"
             />
           </View>
         ) : null}
@@ -162,6 +269,9 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
           <View className={imageSource || hasDocument ? 'mt-2' : ''}>
             <MarkdownMessage content={message.content} isUser={isUser} />
           </View>
+        ) : !isUser && !imageSource && !hasDocument ? (
+          // Show typing indicator for assistant messages with no content (thinking)
+          <TypingIndicator />
         ) : null}
         
         {/* Show indicator if media-only message */}
@@ -180,7 +290,8 @@ export default function ChatBubble({ message }: ChatBubbleProps) {
             )}
           </View>
         )}
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Animated.View>
       {timestamp ? (
         <Text className={`mt-1 font-medium text-[10px] text-[#6A6A6A] ${isUser ? 'mr-1 text-right' : 'ml-1 text-left'}`}>
           {timestamp}

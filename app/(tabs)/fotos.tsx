@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Image, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Animated } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useUserStore } from '@/store/userStore';
@@ -619,51 +619,63 @@ export default function FotosScreen() {
   return (
     <View className="flex-1 bg-background">
       {/* Header */}
-      <View
-        className="flex-row items-center justify-between px-4 pb-4 border-b-3 border-borderBlack bg-sand"
-        style={{ paddingTop: Math.max(insets.top, 20) + 12 }}
-      >
-        <View className="flex-1 items-center justify-center px-4 pt-2">
-          {viewMode === 'menu' ? (
-            <>
-              <Image
-                source={LOGO}
-                style={{ height: 60, width: 60, resizeMode: 'contain' }}
-              />
-              <Text className="font-heading font-black text-xl text-charcoal -mt-1">
-                Fotos
-              </Text>
-            </>
-          ) : (
-            <View className="flex-row items-center">
-              <TouchableOpacity onPress={handleBackToMenu} className="p-2 -ml-4 mr-4">
-                <Ionicons name="arrow-back" size={24} color={CHARCOAL} />
-            </TouchableOpacity>
-              <Text className="font-heading font-black text-xl text-charcoal">
-                {viewMode === 'create' ? 'Maak Prent' : 'Redigeer Prent'}
-              </Text>
-            </View>
-          )}
+      <View className="bg-sand z-10" style={{ paddingTop: Math.max(insets.top + 4, 16) }}>
+        <View className="flex-row items-center justify-between px-4 pb-3">
+          {/* Left Side */}
+          <View className="w-12 items-start">
+            {viewMode === 'menu' ? (
+              <TouchableOpacity 
+                onPress={() => setShowMenuDrawer(true)} 
+                className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
+              >
+                <Ionicons name="menu" size={22} color="#1A1A1A" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                onPress={handleBackToMenu} 
+                className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
+              >
+                <Ionicons name="arrow-back" size={22} color="#1A1A1A" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Center Title */}
+          <View className="flex-1 items-center justify-center">
+            {viewMode === 'menu' ? (
+               <View className="flex-row items-center gap-2 bg-yellow/20 px-3 py-1 rounded-xl border-2 border-transparent">
+                 <Image source={LOGO} style={{ height: 24, width: 24, resizeMode: 'contain' }} />
+                 <Text className="font-heading font-black text-lg text-charcoal">Fotos</Text>
+               </View>
+            ) : (
+               <Text className="font-heading font-black text-lg text-charcoal text-center">
+                 {viewMode === 'create' ? 'Maak Prent' : 'Redigeer Prent'}
+               </Text>
+            )}
+          </View>
+
+          {/* Right Side */}
+          <View className="w-12 items-end">
+            {viewMode === 'menu' ? (
+              <TouchableOpacity 
+                onPress={() => Alert.alert('Kategorieë', 'Hier sal kategorieë verskyn.')} 
+                className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
+              >
+                <Ionicons name="grid-outline" size={22} color="#1A1A1A" />
+              </TouchableOpacity>
+            ) : viewMode === 'create' ? (
+              <TouchableOpacity 
+                onPress={() => setShowSettings(!showSettings)} 
+                className={`w-10 h-10 rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none ${showSettings ? 'bg-yellow' : 'bg-white'}`}
+              >
+                <Ionicons name={showSettings ? 'options' : 'options-outline'} size={22} color="#1A1A1A" />
+              </TouchableOpacity>
+            ) : (
+              <View className="w-10 h-10" />
+            )}
+          </View>
         </View>
-        
-        <View className="absolute right-4 bottom-4">
-          {viewMode === 'create' && (
-          <TouchableOpacity 
-            onPress={() => setShowSettings(!showSettings)} 
-            className="w-10 h-10 rounded-lg bg-yellow border-2 border-borderBlack items-center justify-center"
-          >
-            <Ionicons name={showSettings ? "options" : "options-outline"} size={22} color={CHARCOAL} />
-          </TouchableOpacity>
-        )}
-        </View>
-        
-        <View className="absolute left-4 bottom-4">
-           {viewMode === 'menu' && (
-             <TouchableOpacity onPress={() => setShowMenuDrawer(true)} className="p-2 items-center justify-center">
-               <Ionicons name="menu" size={28} color={CHARCOAL} />
-             </TouchableOpacity>
-           )}
-        </View>
+        <View className="border-b-2 border-charcoal w-full opacity-10" />
       </View>
 
       {viewMode === 'menu' ? renderMenu() : renderGenerationScreen()}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Modal, View, Text, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,6 +38,7 @@ export default function AttachmentSheet({
   usageInfo,
 }: AttachmentSheetProps) {
   const insets = useSafeAreaInsets();
+  const [pendingAction, setPendingAction] = useState<AttachmentAction | null>(null);
 
   const options: AttachmentOption[] = [
     {
@@ -57,29 +59,21 @@ export default function AttachmentSheet({
       title: 'Laai Dokument',
       description: 'PDF, Word, TXT of ander dokumente',
     },
-    {
-      id: 'create_image',
-      icon: 'brush-outline',
-      title: 'Skep Beeld met AI',
-      description: 'Genereer \'n nuwe prent met kunsmatige intelligensie',
-      limitInfo: usageInfo?.imageGenerate
-        ? `${usageInfo.imageGenerate.remaining}/${usageInfo.imageGenerate.limit} oor vandag`
-        : undefined,
-    },
-    {
-      id: 'edit_image',
-      icon: 'color-wand-outline',
-      title: 'Redigeer Beeld',
-      description: 'Wysig of verbeter \'n bestaande foto met AI',
-      limitInfo: usageInfo?.imageEdit
-        ? `${usageInfo.imageEdit.remaining}/${usageInfo.imageEdit.limit} oor vandag`
-        : undefined,
-    },
   ];
 
   const handleSelect = (action: AttachmentAction) => {
-    onSelect(action);
+    setPendingAction(action);
     onClose();
+  };
+
+  const handleModalHide = () => {
+    if (pendingAction) {
+      // Small additional delay to ensure iOS is ready
+      setTimeout(() => {
+        onSelect(pendingAction);
+        setPendingAction(null);
+      }, 100);
+    }
   };
 
   const getIconBgColor = (id: AttachmentAction) => {
@@ -99,6 +93,7 @@ export default function AttachmentSheet({
       transparent
       animationType="slide"
       onRequestClose={onClose}
+      onDismiss={handleModalHide}
     >
       <View className="flex-1 bg-black/60 justify-end">
         <Pressable

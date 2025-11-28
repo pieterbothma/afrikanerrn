@@ -5,14 +5,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
-// Neobrutalist Theme Colors
+// Theme Colors
 const ACCENT = "#DE7356"; // Copper
 const INACTIVE = "#1A1A1A"; // Charcoal
 const BACKGROUND = "#E8E2D6"; // Sand
 const BORDER = "#000000"; // Black
 const ACTIVE_BG = "#FFD800"; // Yellow
 
-// Animated tab icon with scale
+// Animated tab icon with scale and background
 function AnimatedTabIcon({
   name,
   focused,
@@ -41,7 +41,7 @@ function AnimatedTabIcon({
   }, [focused, scaleAnim]);
 
   return (
-    <View style={styles.iconContainer}>
+    <View style={[styles.iconContainer, focused && styles.iconContainerFocused]}>
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <Ionicons name={name} size={24} color={color} />
       </Animated.View>
@@ -114,7 +114,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           }
         };
 
-        const color = INACTIVE; // Always charcoal, focused state is handled by background
+        const color = INACTIVE; // Always charcoal
 
         return (
           <TouchableOpacity
@@ -124,10 +124,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             accessibilityLabel={options.tabBarAccessibilityLabel}
             onPress={onPress}
             onLongPress={onLongPress}
-            style={[
-              styles.tabItem, 
-              isFocused && styles.tabItemFocused
-            ]}
+            style={styles.tabItem}
             activeOpacity={0.7}
           >
             <AnimatedTabIcon
@@ -154,11 +151,16 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     backgroundColor: BACKGROUND,
-    borderTopWidth: 3,
-    borderTopColor: BORDER,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
     paddingTop: 8,
     paddingHorizontal: 8,
     gap: 4,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
   tabItem: {
     flex: 1,
@@ -166,25 +168,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 8,
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  tabItemFocused: {
-    backgroundColor: ACTIVE_BG,
-    borderColor: BORDER,
-    // Brutalist shadow for focused tab
-    borderBottomWidth: 4,
-    borderRightWidth: 2, // slightly less for tab
   },
   iconContainer: {
-    width: 32,
-    height: 28,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: 20,
+  },
+  iconContainerFocused: {
+    backgroundColor: ACTIVE_BG,
   },
   label: {
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 4,
     fontFamily: "Inter",
   },
 });

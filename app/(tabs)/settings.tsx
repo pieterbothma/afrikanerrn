@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View, TextInput, Image, ActivityIndicator } from 'react-native';
+import { Alert, ScrollView, Text, TouchableOpacity, View, TextInput, Image, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { requestMediaLibraryPermission } from '@/lib/permissions';
@@ -11,6 +11,8 @@ import { supabase } from '@/lib/supabase';
 import { uploadImageToSupabase } from '@/lib/storage';
 import { useUserStore } from '@/store/userStore';
 import { useChatStore } from '@/store/chatStore';
+import { useMemoryStore } from '@/store/memoryStore';
+import type { MemoryType, UserMemory } from '@/lib/memories';
 import { getTodayUsage, USAGE_LIMITS, getUserTier } from '@/lib/usageLimits';
 import { getSubscriptionTier, SubscriptionTier } from '@/lib/revenuecat';
 import { useAppStore } from '@/store/appStore';
@@ -18,6 +20,11 @@ import { useAppStore } from '@/store/appStore';
 const ACCENT = '#DE7356'; // Copper
 const CHARCOAL = '#1A1A1A';
 const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
+const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
+  profile: 'Profiel',
+  preference: 'Voorkeur',
+  fact: 'Feit',
+};
 
 // Section header component
 function SectionHeader({ title, icon }: { title: string; icon: keyof typeof Ionicons.glyphMap }) {
@@ -52,6 +59,12 @@ export default function SettingsScreen() {
   const resetOnboardingFlag = useAppStore((state) => state.resetOnboardingFlag);
   const conversations = useChatStore((state) => state.conversations);
   const messages = useChatStore((state) => state.messages);
+  const memories = useMemoryStore((state) => state.memories);
+  const loadMemories = useMemoryStore((state) => state.loadMemories);
+  const addMemory = useMemoryStore((state) => state.addMemory);
+  const editMemory = useMemoryStore((state) => state.editMemory);
+  const removeMemory = useMemoryStore((state) => state.removeMemory);
+  const memoriesLoading = useMemoryStore((state) => state.isLoading);
   
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || '');
@@ -62,6 +75,19 @@ export default function SettingsScreen() {
   const [usage, setUsage] = useState<{ chat: number; image_generate: number; image_edit: number } | null>(null);
   const [tier, setTier] = useState<'free' | 'premium'>('free');
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free');
+  const [memoryModalVisible, setMemoryModalVisible] = useState(false);
+  const [isSavingMemory, setIsSavingMemory] = useState(false);
+  const [memoryForm, setMemoryForm] = useState<{
+    id: string | null;
+    type: MemoryType;
+    title: string;
+    content: string;
+  }>({
+    id: null,
+    type: 'fact',
+    title: '',
+    content: '',
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -70,6 +96,14 @@ export default function SettingsScreen() {
       loadUsage();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    loadMemories(user.id);
+  }, [loadMemories, user?.id]);
 
   const loadProfile = async () => {
     if (!user?.id) {
@@ -212,6 +246,118 @@ export default function SettingsScreen() {
     );
   };
 
+  const resetMemoryFormState = () =>
+    setMemoryForm({
+      id: null,
+      type: 'fact',
+      title: '',
+      content: '',
+    });
+
+  const openNewMemoryModal = () => {
+    resetMemoryFormState();
+    setMemoryModalVisible(true);
+  };
+
+  const openEditMemory = (memory: UserMemory) => {
+    setMemoryForm({
+      id: memory.id,
+      type: memory.type,
+      title: memory.title,
+      content: memory.content,
+    });
+    setMemoryModalVisible(true);
+  };
+
+  const closeMemoryModal = () => {
+    if (isSavingMemory) {
+      return;
+    }
+    setMemoryModalVisible(false);
+    resetMemoryFormState();
+  };
+
+  const handleSaveMemory = async () => {
+    if (!user?.id || isSavingMemory) {
+      return;
+    }
+
+    const trimmedTitle = memoryForm.title.trim();
+    const trimmedContent = memoryForm.content.trim();
+
+    if (!trimmedTitle || !trimmedContent) {
+      Alert.alert('Onvolledige vorm', 'Titel en inhoud is albei benodig.');
+      return;
+    }
+
+    setIsSavingMemory(true);
+    try {
+      if (memoryForm.id) {
+        const updated = await editMemory(user.id, memoryForm.id, {
+          title: trimmedTitle,
+          content: trimmedContent,
+          type: memoryForm.type,
+        });
+
+        if (!updated) {
+          Alert.alert('Oeps!', 'Kon nie herinnering opdateer nie. Probeer weer.');
+          return;
+        }
+      } else {
+        const created = await addMemory(user.id, {
+          title: trimmedTitle,
+          content: trimmedContent,
+          type: memoryForm.type,
+        });
+
+        if (!created) {
+          Alert.alert('Oeps!', 'Kon nie herinnering stoor nie. Probeer weer.');
+          return;
+        }
+      }
+
+      setMemoryModalVisible(false);
+      resetMemoryFormState();
+    } catch (error) {
+      console.error('Herinnering stoor/werk by gefaal:', error);
+      Alert.alert('Oeps!', 'Kon nie herinnering stoor nie.');
+    } finally {
+      setIsSavingMemory(false);
+    }
+  };
+
+  const handleDeleteMemory = (memory: UserMemory) => {
+    if (!user?.id) {
+      return;
+    }
+
+    Alert.alert(
+      'Skrap herinnering',
+      `Is jy seker jy wil "${memory.title}" verwyder?`,
+      [
+        { text: 'Kanselleer', style: 'cancel' },
+        {
+          text: 'Skrap',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await removeMemory(user.id!, memory.id);
+            if (!success) {
+              Alert.alert('Oeps!', 'Kon nie herinnering skrap nie.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const formatMemoryDate = (date: string) => {
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toLocaleDateString();
+  };
+
   return (
     <View className="flex-1 bg-sand">
       <BackHeader title="Instellings" />
@@ -318,6 +464,85 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+
+        {/* Memories Section */}
+        <SectionHeader title="Herinneringe" icon="book" />
+        <View className="rounded-xl bg-ivory border-2 border-borderBlack p-4 shadow-brutal-sm">
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-1 pr-3">
+              <Text className="font-bold text-base text-charcoal">Laat Koedoe jou onthou</Text>
+              <Text className="font-medium text-sm text-charcoal/60 mt-1">
+                Voeg feite, voorkeure of profielbesonderhede by wat in gesprekke moet opduik.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={openNewMemoryModal}
+              className="px-4 py-2 rounded-xl bg-copper border-2 border-borderBlack flex-row items-center justify-center gap-2 shadow-brutal-sm"
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text className="text-xs font-bold text-white uppercase mt-0.5">Voeg by</Text>
+            </TouchableOpacity>
+          </View>
+
+          {memoriesLoading ? (
+            <View className="py-6 items-center">
+              <ActivityIndicator color={ACCENT} />
+              <Text className="mt-2 text-sm text-charcoal/60">Laai herinneringe…</Text>
+            </View>
+          ) : memories.length === 0 ? (
+            <View className="py-6 items-center">
+              <View className="w-12 h-12 rounded-full bg-white border-2 border-borderBlack items-center justify-center mb-3">
+                <Ionicons name="bookmark-outline" size={22} color={CHARCOAL} />
+              </View>
+              <Text className="text-sm text-center text-charcoal/70">
+                Geen herinneringe nog nie. Voeg jou eerste feit of voorkeur by.
+              </Text>
+            </View>
+          ) : (
+            <View className="gap-3">
+              {memories.map((memory) => (
+                <View
+                  key={memory.id}
+                  className="rounded-xl border-2 border-borderBlack bg-white p-3 shadow-brutal-sm"
+                >
+                  <View className="flex-row items-start justify-between gap-3">
+                    <View className="flex-1">
+                      <Text className="font-bold text-base text-charcoal">{memory.title}</Text>
+                      <Text className="text-sm text-charcoal/70 mt-1" numberOfLines={3}>
+                        {memory.content}
+                      </Text>
+                    </View>
+                    <View className="flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={() => openEditMemory(memory)}
+                        className="p-1.5 rounded-lg border border-borderBlack bg-ivory"
+                      >
+                        <Ionicons name="create-outline" size={16} color={CHARCOAL} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteMemory(memory)}
+                        className="p-1.5 rounded-lg border border-borderBlack bg-white"
+                      >
+                        <Ionicons name="trash-outline" size={16} color={CHARCOAL} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View className="flex-row items-center gap-2 mt-3">
+                    <View className="px-2 py-0.5 rounded-full bg-yellow border border-borderBlack">
+                      <Text className="text-xs font-bold text-charcoal uppercase">
+                        {MEMORY_TYPE_LABELS[memory.type]}
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-charcoal/60">
+                      {formatMemoryDate(memory.updatedAt)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Subscription Section */}
@@ -441,6 +666,95 @@ export default function SettingsScreen() {
           <Text className="font-bold text-xs text-charcoal/40 uppercase tracking-widest">Koedoe AI • v1.0.0</Text>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={memoryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMemoryModal}
+      >
+        <View className="flex-1 bg-black/60 items-center justify-center px-4">
+          <View className="w-full rounded-2xl bg-ivory border-2 border-borderBlack p-5">
+            <Text className="font-heading font-black text-xl text-charcoal">
+              {memoryForm.id ? 'Wysig herinnering' : 'Nuwe herinnering'}
+            </Text>
+            <Text className="text-sm text-charcoal/60 mt-1">
+              Gee Koedoe kort, duidelike besonderhede om te onthou.
+            </Text>
+
+            <View className="flex-row gap-2 mt-4">
+              {(['profile', 'preference', 'fact'] as MemoryType[]).map((type) => {
+                const isActive = memoryForm.type === type;
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => setMemoryForm((prev) => ({ ...prev, type }))}
+                    disabled={isSavingMemory}
+                    className={`flex-1 rounded-xl border-2 border-borderBlack ${
+                      isActive ? 'bg-teal' : 'bg-white'
+                    }`}
+                    activeOpacity={0.8}
+                  >
+                    <Text className="text-center font-bold text-sm text-charcoal py-3">
+                      {MEMORY_TYPE_LABELS[type]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View className="mt-4">
+              <Text className="text-xs font-bold text-charcoal uppercase mb-2">Titel</Text>
+              <TextInput
+                className="rounded-xl border-2 border-borderBlack bg-white px-4 py-3 font-medium text-base text-charcoal"
+                placeholder="bv. Naam van my seun"
+                placeholderTextColor="#8E8EA0"
+                value={memoryForm.title}
+                onChangeText={(text) => setMemoryForm((prev) => ({ ...prev, title: text }))}
+                editable={!isSavingMemory}
+              />
+            </View>
+
+            <View className="mt-3">
+              <Text className="text-xs font-bold text-charcoal uppercase mb-2">Inhoud</Text>
+              <TextInput
+                className="rounded-xl border-2 border-borderBlack bg-white px-4 py-3 font-medium text-base text-charcoal"
+                placeholder="Wat moet Koedoe onthou?"
+                placeholderTextColor="#8E8EA0"
+                value={memoryForm.content}
+                onChangeText={(text) => setMemoryForm((prev) => ({ ...prev, content: text }))}
+                editable={!isSavingMemory}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+
+            <View className="flex-row gap-3 mt-5">
+              <TouchableOpacity
+                onPress={closeMemoryModal}
+                className="flex-1 rounded-xl border-2 border-borderBlack bg-white py-3.5"
+                disabled={isSavingMemory}
+                activeOpacity={0.8}
+              >
+                <Text className="text-center font-bold text-charcoal">Kanselleer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveMemory}
+                className="flex-1 rounded-xl border-2 border-borderBlack bg-copper py-3.5"
+                disabled={isSavingMemory}
+                activeOpacity={0.8}
+              >
+                {isSavingMemory ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text className="text-center font-bold text-white">Stoor</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

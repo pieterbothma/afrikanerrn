@@ -13,7 +13,7 @@ import {
   FlatList,
   Image,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -695,39 +695,42 @@ export default function DokumenteScreen() {
   return (
     <View className="flex-1 bg-background">
       {/* Header */}
-      <View
-        className="flex-row items-end justify-between px-4 pb-4 border-b-3 border-borderBlack bg-sand"
-        style={{ paddingTop: Math.max(insets.top, 20) + 12 }}
-      >
-        <TouchableOpacity 
-          onPress={() => setShowMenuDrawer(true)} 
-          className="w-10 h-10 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
-        >
-          <Ionicons name="menu" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        
-        {/* Logo - Centered */}
-        <View className="flex-1 items-center justify-center px-4">
-          <Image
-            source={LOGO}
-            style={{ height: 60, width: 60, resizeMode: 'contain' }}
-          />
-          <Text className="font-heading font-black text-xl text-charcoal -mt-1">
-            Dokumente
-          </Text>
+      <SafeAreaView edges={['top']} className="bg-sand">
+        <View className="flex-row items-center justify-between px-3 py-2">
+          <View className="w-10 items-start">
+            <TouchableOpacity 
+              onPress={() => setShowMenuDrawer(true)} 
+              className="w-9 h-9 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
+            >
+              <Ionicons name="menu" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          
+          <View className="flex-row items-center gap-2">
+            <Image
+              source={LOGO}
+              style={{ height: 36, width: 36, resizeMode: 'contain' }}
+            />
+            <Text className="font-heading font-black text-lg text-charcoal -mt-0.5">
+              Dokumente
+            </Text>
+          </View>
+          
+          <View className="w-10 items-end">
+            {document ? (
+              <TouchableOpacity 
+                onPress={handleNewDocument} 
+                className="w-9 h-9 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
+              >
+                <Ionicons name="add" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : (
+              <View className="w-9 h-9" />
+            )}
+          </View>
         </View>
-        
-        {document ? (
-          <TouchableOpacity 
-            onPress={handleNewDocument} 
-            className="w-10 h-10 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
-          >
-            <Ionicons name="add" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        ) : (
-          <View className="w-10" />
-        )}
-      </View>
+        <View className="border-b border-borderBlack mx-3" />
+      </SafeAreaView>
 
       {document ? renderChatScreen() : renderUploadScreen()}
 

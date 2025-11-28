@@ -37,6 +37,7 @@ type ChatStore = {
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   clearMessages: () => void;
   setCurrentConversationId: (id: string | null) => void;
+  resetSession: () => void;
   loadMessagesFromSupabase: (userId: string, conversationId?: string) => Promise<void>;
   saveMessageToSupabase: (message: ChatMessage, userId: string) => Promise<void>;
   loadConversations: (userId: string) => Promise<void>;
@@ -57,6 +58,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
   clearMessages: () => set({ messages: [] }),
   setCurrentConversationId: (id) => set({ currentConversationId: id }),
+  resetSession: () => set({ currentConversationId: null, messages: [] }),
   loadMessagesFromSupabase: async (userId: string, conversationId?: string) => {
     const cached = await getCachedMessages(userId, conversationId);
     if (cached) {

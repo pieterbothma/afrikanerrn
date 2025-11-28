@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { ActivityIndicator, Text, View, Animated, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +22,8 @@ import 'react-native-url-polyfill/auto';
 
 initMonitoring();
 
-const ACCENT = '#B46E3A'; // Horn Copper
+const ACCENT = '#DE7356'; // Copper
+const LOGO = require('../assets/branding/koedoelogo.png');
 
 export default function RootLayout() {
   const router = useRouter();
@@ -39,6 +40,24 @@ export default function RootLayout() {
     InterBold: Inter_700Bold,
     InterTight: InterTight_700Bold,
   });
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, scaleAnim]);
 
   useEffect(() => {
     let isMounted = true;
@@ -119,16 +138,29 @@ export default function RootLayout() {
         edges={['top', 'left', 'right', 'bottom']}
       >
         {showSplash ? (
-          <View className="flex-1 items-center justify-center gap-6 px-8 bg-background">
-            <View className="w-full rounded-xl bg-card px-6 py-10 border border-border">
-              <Text className="text-center font-heading font-bold text-4xl text-foreground">
+          <View className="flex-1 items-center justify-center bg-sand">
+            <Animated.View 
+              className="items-center justify-center"
+              style={{ 
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }}
+            >
+              <Image
+                source={LOGO}
+                style={{ width: 120, height: 120, resizeMode: 'contain', marginBottom: 24 }}
+              />
+              <Text className="font-heading font-black text-4xl text-charcoal text-center mb-2">
                 Koedoe
               </Text>
-              <Text className="mt-4 text-center font-sans font-normal text-base text-muted">
-                Praat. Skryf. Leer. Bou – in Afrikaans.
+              <Text className="font-medium text-lg text-charcoal/60 text-center">
+                Praat. Skryf. Leer. Bou.
               </Text>
+            </Animated.View>
+            
+            <View className="absolute bottom-12">
+              <ActivityIndicator size="large" color={ACCENT} />
             </View>
-            <ActivityIndicator size="large" color={ACCENT} />
           </View>
         ) : (
           <Slot />
