@@ -23,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import InputBar from '@/components/InputBar';
 import MenuDrawer from '@/components/MenuDrawer';
+import FloatingChatHeader from '@/components/FloatingChatHeader';
 import AfricanLandscapeWatermark from '@/components/AfricanLandscapeWatermark';
 import ImageGenerationModal from '@/components/ImageGenerationModal';
 import ImageEditModal from '@/components/ImageEditModal';
@@ -49,7 +50,6 @@ import { ChatMessagesList } from '@/chat/components/ChatMessagesList';
 const ACCENT = '#DE7356'; // Copper
 const CHARCOAL = '#1A1A1A';
 const SAND = '#E8E2D6';
-const LOGO = require('../../assets/branding/koedoelogo.png');
 const IMAGE_MEDIA_TYPES: ImagePicker.MediaType[] = ['images'];
 const LAST_SESSION_END_KEY = 'koedoe.lastSessionEnd';
 const SESSION_RESET_THRESHOLD_MS = 1000 * 60 * 5; // 5 minute inactivity pauses trigger a reset
@@ -62,6 +62,10 @@ const SAMPLE_PROMPTS = [
   "🧾 Skryf vir my 'n dokument",
 ];
 
+const FADE_IN_DURATION = 400;
+const TYPEWRITER_SPEED = 30;
+const GREETING_TEXT = "Hallo! Waarmee kan ek jou help vandag? 😊";
+
 export default function ChatScreen({ showHeader = true }: { showHeader?: boolean }) {
   return (
     <ChatProvider>
@@ -72,6 +76,11 @@ export default function ChatScreen({ showHeader = true }: { showHeader?: boolean
 
 function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
   const [input, setInput] = useState('');
+  const [greetingText, setGreetingText] = useState('');
+  const [isTypingGreeting, setIsTypingGreeting] = useState(true);
+  const fadeAnims = useRef(SAMPLE_PROMPTS.map(() => new Animated.Value(0))).current;
+  const greetingOpacity = useRef(new Animated.Value(0)).current;
+  
   const [isSending, setIsSending] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showCreateImageModal, setShowCreateImageModal] = useState(false);
@@ -143,16 +152,43 @@ function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
   const loadMemories = useMemoryStore((state) => state.loadMemories);
   const addMemory = useMemoryStore((state) => state.addMemory);
 
+  // Typewriter effect and fade-in animations
   useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
+    if (messages.length > 0) return;
 
-    if (!hasInitializedChatSession) {
-      hasInitializedChatSession = true;
-      handleNewChat();
-    }
-  }, [handleNewChat, user?.id]);
+    // 1. Fade in the bubble container
+    Animated.timing(greetingOpacity, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+
+    // 2. Typewriter effect
+    let currentIndex = 0;
+    const typeWriter = setInterval(() => {
+      if (currentIndex < GREETING_TEXT.length) {
+        setGreetingText(GREETING_TEXT.substring(0, currentIndex + 1));
+        currentIndex++;
+      } else {
+        clearInterval(typeWriter);
+        setIsTypingGreeting(false);
+        
+        // 3. Staggered fade in for prompts after typing finishes
+        Animated.stagger(100, 
+          fadeAnims.map(anim => 
+            Animated.spring(anim, {
+              toValue: 1,
+              useNativeDriver: true,
+              friction: 8,
+              tension: 40
+            })
+          )
+        ).start();
+      }
+    }, TYPEWRITER_SPEED);
+
+    return () => clearInterval(typeWriter);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!user) {
@@ -1073,31 +1109,10 @@ function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
     >
       <View style={{ flex: 1 }}>
         {showHeader && (
-          <View className="bg-sand z-10" style={{ paddingTop: Math.max(insets.top + 4, 16) }}>
-            <View className="flex-row items-center justify-between px-4 pb-3">
-              <View className="w-12 items-start">
-                <TouchableOpacity
-                  onPress={() => setShowMenuDrawer(true)}
-                  className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
-                >
-                  <Ionicons name="menu" size={22} color="#1A1A1A" />
-                </TouchableOpacity>
-              </View>
-              <View className="flex-row items-center gap-2 bg-yellow/20 px-3 py-1 rounded-xl border-2 border-transparent">
-                <Image source={LOGO} style={{ height: 24, width: 24, resizeMode: 'contain' }} />
-                <Text className="font-heading font-black text-lg text-charcoal">Klets</Text>
-              </View>
-              <View className="w-12 items-end">
-                <TouchableOpacity
-                  onPress={handleNewChat}
-                  className="w-10 h-10 bg-white rounded-xl border-2 border-charcoal items-center justify-center shadow-brutal-sm active:translate-y-1 active:shadow-none"
-                >
-                  <Ionicons name="create-outline" size={22} color="#1A1A1A" />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View className="border-b-2 border-charcoal w-full opacity-10" />
-          </View>
+          <FloatingChatHeader
+            onMenuPress={() => setShowMenuDrawer(true)}
+            onNewChat={handleNewChat}
+          />
         )}
 
         <View style={{ flex: 1 }}>
@@ -1106,29 +1121,48 @@ function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
           {messages.length === 0 ? (
             <ScrollView 
               className="flex-1"
-              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 24, paddingTop: insets.top + 80 }}
               refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
             >
-              <View className="bg-yellow p-5 rounded-2xl border-2 border-charcoal shadow-brutal self-start max-w-[85%] mb-8 transform rotate-1">
+              <Animated.View 
+                style={{ opacity: greetingOpacity }}
+                className="bg-yellow p-5 rounded-2xl border-2 border-charcoal shadow-brutal self-start max-w-[85%] mb-8 transform rotate-1"
+              >
                  <Text className="text-charcoal text-lg leading-6 font-bold">
-                   Hallo! Waarmee kan ek jou help vandag? 😊
+                   {greetingText}
+                   {isTypingGreeting && <Text className="text-charcoal">|</Text>}
                  </Text>
-              </View>
+              </Animated.View>
   
-              <Text className="text-charcoal font-black mb-4 ml-1 text-lg uppercase tracking-wide">Probeer hierdie idees</Text>
+              {!isTypingGreeting && (
+                <Animated.View style={{ opacity: fadeAnims[0] }}>
+                  <Text className="text-charcoal font-black mb-4 ml-1 text-lg uppercase tracking-wide">Probeer hierdie idees</Text>
+                </Animated.View>
+              )}
               
               <View className="flex-row flex-wrap gap-3">
-                {promptSuggestions.map((prompt) => (
-                  <TouchableOpacity
-                    key={prompt}
-                    onPress={() => handlePromptClick(prompt)}
-                    disabled={isSending}
-                    activeOpacity={0.7}
-                    className="px-5 py-3 rounded-full border-2 border-charcoal bg-white mb-2 flex-row items-center shadow-brutal-sm active:translate-y-[2px] active:shadow-none"
-                    style={{ opacity: isSending ? 0.6 : 1 }}
+                {promptSuggestions.map((prompt, index) => (
+                  <Animated.View 
+                    key={prompt} 
+                    style={{ 
+                      opacity: fadeAnims[index],
+                      transform: [{ 
+                        translateY: fadeAnims[index].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0]
+                        })
+                      }]
+                    }}
                   >
-                    <Text className="text-sm font-bold text-charcoal">{prompt}</Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handlePromptClick(prompt)}
+                      disabled={isSending}
+                      activeOpacity={0.7}
+                      className="px-5 py-3 rounded-full border-2 border-charcoal bg-white mb-2 flex-row items-center shadow-brutal-sm active:translate-y-[2px] active:shadow-none"
+                    >
+                      <Text className="text-sm font-bold text-charcoal">{prompt}</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
                 ))}
               </View>
             </ScrollView>
@@ -1138,6 +1172,7 @@ function ChatScreenContent({ showHeader = true }: { showHeader?: boolean }) {
               ListEmptyComponent={null}
               isRefreshing={isRefreshing}
               onRefresh={handleRefresh}
+              contentContainerStyle={{ paddingTop: insets.top + 80 }}
             />
           )}
         </View>

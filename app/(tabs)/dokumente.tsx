@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,42 +12,47 @@ import {
   Animated,
   FlatList,
   Image,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import { useUserStore } from '@/store/userStore';
-import MenuDrawer from '@/components/MenuDrawer';
-import { generateUUID, formatBytes } from '@/lib/utils';
-import { answerQuestionAboutDocument } from '@/lib/openai';
-import { uploadDocumentToSupabase } from '@/lib/storage';
-import { track } from '@/lib/analytics';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { useUserStore } from "@/store/userStore";
+import MenuDrawer from "@/components/MenuDrawer";
+import { generateUUID, formatBytes } from "@/lib/utils";
+import { answerQuestionAboutDocument } from "@/lib/openai";
+import { uploadDocumentToSupabase } from "@/lib/storage";
+import { track } from "@/lib/analytics";
+import FloatingChatHeader from "@/components/FloatingChatHeader";
+import AfricanLandscapeWatermark from "@/components/AfricanLandscapeWatermark";
 
 // Neobrutalist Palette
-const ACCENT = '#DE7356'; // Copper
-const CHARCOAL = '#1A1A1A';
-const SAND = '#E8E2D6';
-const IVORY = '#F7F3EE';
-const TEAL = '#3EC7E3';
-const YELLOW = '#FFD800';
-const BORDER = '#000000';
-const LOGO = require('../../assets/branding/koedoelogo.png');
+const ACCENT = "#DE7356"; // Copper
+const CHARCOAL = "#1A1A1A";
+const SAND = "#E8E2D6";
+const IVORY = "#F7F3EE";
+const TEAL = "#3EC7E3";
+const YELLOW = "#FFD800";
+const BORDER = "#000000";
+const LOGO = require("../../assets/branding/koedoelogo.png");
 
 const SUPPORTED_MIME_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'application/json',
-  'text/csv',
-  'text/markdown',
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "application/json",
+  "text/csv",
+  "text/markdown",
 ];
 
 type DocumentMessage = {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   createdAt: string;
 };
@@ -88,7 +93,7 @@ function DocumentUploadArea({
         }),
       ])
     );
-    
+
     const float = Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {
@@ -103,10 +108,10 @@ function DocumentUploadArea({
         }),
       ])
     );
-    
+
     pulse.start();
     float.start();
-    
+
     return () => {
       pulse.stop();
       float.stop();
@@ -119,12 +124,16 @@ function DocumentUploadArea({
   });
 
   return (
-    <TouchableOpacity onPress={onPress} disabled={isUploading} activeOpacity={0.8}>
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={isUploading}
+      activeOpacity={0.8}
+    >
       <Animated.View
         className="rounded-2xl p-8 items-center justify-center min-h-[280px] relative overflow-hidden bg-ivory shadow-brutal"
         style={{
           borderWidth: 3,
-          borderStyle: 'dashed',
+          borderStyle: "dashed",
           borderColor,
         }}
       >
@@ -141,19 +150,21 @@ function DocumentUploadArea({
             <Ionicons name="document-text" size={48} color="#FFFFFF" />
           )}
         </Animated.View>
-        
+
         <Text className="font-heading font-black text-2xl text-charcoal text-center mb-2">
-          {isUploading ? 'Laai op...' : 'Laai jou dokument op'}
+          {isUploading ? "Laai op..." : "Laai jou dokument op"}
         </Text>
         <Text className="text-charcoal/80 font-medium text-base text-center mb-6 px-4">
           PDF, Word, TXT, Markdown, CSV of JSON
         </Text>
-        
+
         {!isUploading && (
           <View className="bg-copper border-2 border-borderBlack rounded-xl px-6 py-3 shadow-sm">
             <View className="flex-row items-center gap-2">
               <Ionicons name="cloud-upload" size={20} color="#FFFFFF" />
-              <Text className="text-white font-bold text-base">Kies Dokument</Text>
+              <Text className="text-white font-bold text-base">
+                Kies Dokument
+              </Text>
             </View>
           </View>
         )}
@@ -188,11 +199,15 @@ function DocumentContextCard({
           </Text>
           <View className="flex-row items-center gap-2 mt-0.5">
             {document.size && (
-              <Text className="text-xs text-charcoal/60 font-medium">{formatBytes(document.size)}</Text>
+              <Text className="text-xs text-charcoal/60 font-medium">
+                {formatBytes(document.size)}
+              </Text>
             )}
             <View className="flex-row items-center">
               <Ionicons name="checkmark-circle" size={12} color="#4ADE80" />
-              <Text className="text-xs text-[#4ADE80] font-bold ml-1">Gereed</Text>
+              <Text className="text-xs text-[#4ADE80] font-bold ml-1">
+                Gereed
+              </Text>
             </View>
           </View>
         </View>
@@ -205,18 +220,22 @@ function DocumentContextCard({
             <Ionicons name="close" size={16} color="white" />
           </TouchableOpacity>
           <View className="w-8 h-8 rounded-full bg-ivory border border-borderBlack items-center justify-center">
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={CHARCOAL} />
+            <Ionicons
+              name={expanded ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={CHARCOAL}
+            />
           </View>
         </View>
       </TouchableOpacity>
-      
+
       {expanded && document.preview && (
         <View className="px-4 pb-4">
           <View className="rounded-lg bg-sand border border-borderBlack p-3 max-h-[120px]">
             <ScrollView>
               <Text className="text-xs text-charcoal leading-relaxed font-mono">
                 {document.preview}
-                {document.truncated && '\n...\n[Inhoud afgekort]'}
+                {document.truncated && "\n...\n[Inhoud afgekort]"}
               </Text>
             </ScrollView>
           </View>
@@ -233,10 +252,12 @@ function DocumentContextCard({
 
 // Chat bubble component
 function ChatBubble({ message }: { message: DocumentMessage }) {
-  const isUser = message.role === 'user';
-  
+  const isUser = message.role === "user";
+
   return (
-    <View className={`flex-row ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
+    <View
+      className={`flex-row ${isUser ? "justify-end" : "justify-start"} mb-4`}
+    >
       {!isUser && (
         <View className="w-8 h-8 rounded-lg bg-yellow border border-borderBlack items-center justify-center mr-2 mt-1">
           <Ionicons name="sparkles" size={16} color={CHARCOAL} />
@@ -244,12 +265,14 @@ function ChatBubble({ message }: { message: DocumentMessage }) {
       )}
       <View
         className={`max-w-[85%] rounded-xl px-4 py-3 border-2 border-borderBlack ${
-          isUser
-            ? 'bg-copper rounded-br-sm'
-            : 'bg-ivory rounded-bl-sm'
+          isUser ? "bg-copper rounded-br-sm" : "bg-ivory rounded-bl-sm"
         }`}
       >
-        <Text className={`text-base font-medium ${isUser ? 'text-white' : 'text-charcoal'}`}>
+        <Text
+          className={`text-base font-medium ${
+            isUser ? "text-white" : "text-charcoal"
+          }`}
+        >
           {message.content}
         </Text>
       </View>
@@ -268,8 +291,16 @@ function TypingIndicator() {
       return Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
-          Animated.timing(dot, { toValue: -4, duration: 200, useNativeDriver: true }),
-          Animated.timing(dot, { toValue: 0, duration: 200, useNativeDriver: true }),
+          Animated.timing(dot, {
+            toValue: -4,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
         ])
       );
     };
@@ -315,10 +346,10 @@ function TypingIndicator() {
 // Suggested questions
 function SuggestedQuestions({ onSelect }: { onSelect: (q: string) => void }) {
   const questions = [
-    { text: 'Gee my \'n opsomming', icon: 'document-text' as const },
-    { text: 'Wat is die hoofpunte?', icon: 'list' as const },
-    { text: 'Verduidelik in eenvoudige terme', icon: 'bulb' as const },
-    { text: 'Wat is die gevolgtrekkings?', icon: 'checkmark-circle' as const },
+    { text: "Gee my 'n opsomming", icon: "document-text" as const },
+    { text: "Wat is die hoofpunte?", icon: "list" as const },
+    { text: "Verduidelik in eenvoudige terme", icon: "bulb" as const },
+    { text: "Wat is die gevolgtrekkings?", icon: "checkmark-circle" as const },
   ];
 
   return (
@@ -347,14 +378,14 @@ export default function DokumenteScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight ? useBottomTabBarHeight() : 0;
   const user = useUserStore((state) => state.user);
-  
+
   const [showMenuDrawer, setShowMenuDrawer] = useState(false);
   const [document, setDocument] = useState<LoadedDocument | null>(null);
   const [messages, setMessages] = useState<DocumentMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  
+
   const flatListRef = useRef<FlatList<DocumentMessage>>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -369,11 +400,14 @@ export default function DokumenteScreen() {
 
   const handlePickDocument = async () => {
     if (!user?.id) {
-      Alert.alert('Meld aan', 'Jy moet aangemeld wees om dokumente op te laai.');
+      Alert.alert(
+        "Meld aan",
+        "Jy moet aangemeld wees om dokumente op te laai."
+      );
       return;
     }
 
-    track('document_chat_upload_requested');
+    track("document_chat_upload_requested");
     setIsUploading(true);
 
     try {
@@ -389,24 +423,28 @@ export default function DokumenteScreen() {
       }
 
       const asset = result.assets[0];
-      
+
       // Try to read preview for text files
       let preview: string | undefined;
       let truncated = false;
-      const extension = (asset.name?.split('.').pop() || '').toLowerCase();
-      const textExtensions = ['txt', 'md', 'markdown', 'csv', 'json'];
-      
-      if (textExtensions.includes(extension) && asset.size && asset.size < 2 * 1024 * 1024) {
+      const extension = (asset.name?.split(".").pop() || "").toLowerCase();
+      const textExtensions = ["txt", "md", "markdown", "csv", "json"];
+
+      if (
+        textExtensions.includes(extension) &&
+        asset.size &&
+        asset.size < 2 * 1024 * 1024
+      ) {
         try {
           const content = await FileSystem.readAsStringAsync(asset.uri, {
             encoding: FileSystem.EncodingType.UTF8,
           });
-          if (content && !content.includes('\u0000')) {
+          if (content && !content.includes("\u0000")) {
             truncated = content.length > 12000;
             preview = content.slice(0, 600);
           }
         } catch (e) {
-          console.log('Could not generate preview:', e);
+          console.log("Could not generate preview:", e);
         }
       }
 
@@ -418,17 +456,17 @@ export default function DokumenteScreen() {
           user.id,
           generateUUID(),
           asset.name,
-          asset.mimeType || 'application/octet-stream'
+          asset.mimeType || "application/octet-stream"
         );
         if (url) uploadedUri = url;
       } catch (e) {
-        console.log('Upload failed, using local URI:', e);
+        console.log("Upload failed, using local URI:", e);
       }
 
       setDocument({
         uri: uploadedUri,
         localUri: asset.uri,
-        name: asset.name ?? 'dokument',
+        name: asset.name ?? "dokument",
         mimeType: asset.mimeType,
         size: asset.size,
         preview,
@@ -437,12 +475,15 @@ export default function DokumenteScreen() {
 
       // Clear previous messages when new document is loaded
       setMessages([]);
-      
-      track('document_chat_upload_completed');
+
+      track("document_chat_upload_completed");
     } catch (error: any) {
-      console.error('Document pick error:', error);
-      Alert.alert('Oeps!', 'Kon nie die dokument laai nie. Probeer asseblief weer.');
-      track('document_chat_upload_failed', { error: error?.message });
+      console.error("Document pick error:", error);
+      Alert.alert(
+        "Oeps!",
+        "Kon nie die dokument laai nie. Probeer asseblief weer."
+      );
+      track("document_chat_upload_failed", { error: error?.message });
     } finally {
       setIsUploading(false);
     }
@@ -450,18 +491,18 @@ export default function DokumenteScreen() {
 
   const handleSend = async (promptOverride?: string) => {
     if (!user?.id || !document || isSending) return;
-    
+
     const question = (promptOverride || input).trim();
     if (!question) return;
 
-    track('document_chat_question_sent');
+    track("document_chat_question_sent");
     setIsSending(true);
-    setInput('');
+    setInput("");
 
     // Add user message
     const userMessage: DocumentMessage = {
       id: generateUUID(),
-      role: 'user',
+      role: "user",
       content: question,
       createdAt: new Date().toISOString(),
     };
@@ -477,64 +518,57 @@ export default function DokumenteScreen() {
 
       const assistantMessage: DocumentMessage = {
         id: generateUUID(),
-        role: 'assistant',
+        role: "assistant",
         content: answer,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
-      track('document_chat_answer_received');
+      track("document_chat_answer_received");
     } catch (error: any) {
-      console.error('Document Q&A error:', error);
+      console.error("Document Q&A error:", error);
       const errorMessage: DocumentMessage = {
         id: generateUUID(),
-        role: 'assistant',
-        content: 'Oeps! Ek kon nie jou vraag beantwoord nie. Probeer asseblief weer.',
+        role: "assistant",
+        content:
+          "Oeps! Ek kon nie jou vraag beantwoord nie. Probeer asseblief weer.",
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      track('document_chat_error', { error: error?.message });
+      track("document_chat_error", { error: error?.message });
     } finally {
       setIsSending(false);
     }
   };
 
   const handleClearDocument = () => {
-    Alert.alert(
-      'Verwyder dokument?',
-      'Dit sal die huidige gesprek uitvee.',
-      [
-        { text: 'Kanselleer', style: 'cancel' },
-        {
-          text: 'Verwyder',
-          style: 'destructive',
-          onPress: () => {
-            setDocument(null);
-            setMessages([]);
-            setInput('');
-          },
+    Alert.alert("Verwyder dokument?", "Dit sal die huidige gesprek uitvee.", [
+      { text: "Kanselleer", style: "cancel" },
+      {
+        text: "Verwyder",
+        style: "destructive",
+        onPress: () => {
+          setDocument(null);
+          setMessages([]);
+          setInput("");
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleNewDocument = () => {
     if (messages.length > 0) {
-      Alert.alert(
-        'Nuwe dokument?',
-        'Dit sal die huidige gesprek uitvee.',
-        [
-          { text: 'Kanselleer', style: 'cancel' },
-          {
-            text: 'Gaan voort',
-            onPress: () => {
-              setDocument(null);
-              setMessages([]);
-              setInput('');
-              setTimeout(() => handlePickDocument(), 100);
-            },
+      Alert.alert("Nuwe dokument?", "Dit sal die huidige gesprek uitvee.", [
+        { text: "Kanselleer", style: "cancel" },
+        {
+          text: "Gaan voort",
+          onPress: () => {
+            setDocument(null);
+            setMessages([]);
+            setInput("");
+            setTimeout(() => handlePickDocument(), 100);
           },
-        ]
-      );
+        },
+      ]);
     } else {
       handlePickDocument();
     }
@@ -542,9 +576,12 @@ export default function DokumenteScreen() {
 
   // Render upload screen when no document is loaded
   const renderUploadScreen = () => (
-    <ScrollView 
-      className="flex-1 px-4" 
-      contentContainerStyle={{ paddingTop: 24, paddingBottom: 100 }}
+    <ScrollView
+      className="flex-1 px-4"
+      contentContainerStyle={{
+        paddingTop: insets.top + 80,
+        paddingBottom: 100,
+      }}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero Section */}
@@ -553,12 +590,16 @@ export default function DokumenteScreen() {
           Praat met jou Dokumente
         </Text>
         <Text className="text-charcoal font-medium text-base mt-2 text-center px-8">
-          Laai 'n dokument op en vra vrae om opsommings, verduidelikings en insigte te kry.
+          Laai 'n dokument op en vra vrae om opsommings, verduidelikings en
+          insigte te kry.
         </Text>
       </View>
 
       {/* Upload Area */}
-      <DocumentUploadArea onPress={handlePickDocument} isUploading={isUploading} />
+      <DocumentUploadArea
+        onPress={handlePickDocument}
+        isUploading={isUploading}
+      />
 
       {/* Features */}
       <View className="mt-8">
@@ -567,21 +608,45 @@ export default function DokumenteScreen() {
         </Text>
         <View className="gap-3">
           {[
-            { icon: 'document-text', title: 'Opsommings', desc: "Kry 'n vinnige oorsig van jou dokument" },
-            { icon: 'help-circle', title: 'Vra Vrae', desc: 'Kry antwoorde oor spesifieke dele' },
-            { icon: 'bulb', title: 'Verduidelikings', desc: 'Verstaan komplekse konsepte maklik' },
-            { icon: 'list', title: 'Hoofpunte', desc: 'Identifiseer die belangrikste inligting' },
+            {
+              icon: "document-text",
+              title: "Opsommings",
+              desc: "Kry 'n vinnige oorsig van jou dokument",
+            },
+            {
+              icon: "help-circle",
+              title: "Vra Vrae",
+              desc: "Kry antwoorde oor spesifieke dele",
+            },
+            {
+              icon: "bulb",
+              title: "Verduidelikings",
+              desc: "Verstaan komplekse konsepte maklik",
+            },
+            {
+              icon: "list",
+              title: "Hoofpunte",
+              desc: "Identifiseer die belangrikste inligting",
+            },
           ].map((feature) => (
             <View
               key={feature.title}
               className="bg-ivory border-2 border-borderBlack rounded-xl p-4 flex-row items-center gap-4 shadow-brutal-sm"
             >
               <View className="w-12 h-12 rounded-lg bg-yellow border border-borderBlack items-center justify-center">
-                <Ionicons name={feature.icon as any} size={24} color={CHARCOAL} />
+                <Ionicons
+                  name={feature.icon as any}
+                  size={24}
+                  color={CHARCOAL}
+                />
               </View>
               <View className="flex-1">
-                <Text className="font-bold text-base text-charcoal">{feature.title}</Text>
-                <Text className="text-sm text-charcoal/80 mt-0.5 font-medium">{feature.desc}</Text>
+                <Text className="font-bold text-base text-charcoal">
+                  {feature.title}
+                </Text>
+                <Text className="text-sm text-charcoal/80 mt-0.5 font-medium">
+                  {feature.desc}
+                </Text>
               </View>
             </View>
           ))}
@@ -594,13 +659,16 @@ export default function DokumenteScreen() {
   const renderChatScreen = () => (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? tabBarHeight + 60 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? tabBarHeight : 0}
     >
       {/* Document Context */}
-      <View className="px-4 pt-3 pb-2">
+      <View className="px-4 pt-3 pb-2" style={{ paddingTop: insets.top + 80 }}>
         {document && (
-          <DocumentContextCard document={document} onClear={handleClearDocument} />
+          <DocumentContextCard
+            document={document}
+            onClear={handleClearDocument}
+          />
         )}
       </View>
 
@@ -619,7 +687,11 @@ export default function DokumenteScreen() {
           <View className="flex-1 pt-4">
             <SuggestedQuestions onSelect={(q) => handleSend(q)} />
             <View className="flex-1 items-center justify-center opacity-50 py-8">
-              <Ionicons name="chatbubble-ellipses-outline" size={48} color={CHARCOAL} />
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={48}
+                color={CHARCOAL}
+              />
               <Text className="text-charcoal text-sm mt-4 text-center font-medium">
                 Vra enigiets oor jou dokument
               </Text>
@@ -636,31 +708,31 @@ export default function DokumenteScreen() {
         style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
         {messages.length > 0 && messages.length < 4 && (
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             className="mb-3"
           >
             <View className="flex-row gap-2">
-              {['Vertel my meer', 'Verduidelik dit beter', 'Wat nog?'].map((q) => (
-                <TouchableOpacity
-                  key={q}
-                  onPress={() => handleSend(q)}
-                  disabled={isSending}
-                  className="bg-white border border-borderBlack rounded-full px-4 py-2 shadow-sm"
-                  activeOpacity={0.7}
-                >
-                  <Text className="text-sm text-charcoal font-bold">{q}</Text>
-                </TouchableOpacity>
-              ))}
+              {["Vertel my meer", "Verduidelik dit beter", "Wat nog?"].map(
+                (q) => (
+                  <TouchableOpacity
+                    key={q}
+                    onPress={() => handleSend(q)}
+                    disabled={isSending}
+                    className="bg-white border border-borderBlack rounded-full px-4 py-2 shadow-sm"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-sm text-charcoal font-bold">{q}</Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
           </ScrollView>
         )}
-        
+
         <View className="flex-row items-end gap-3">
-          <View
-            className="flex-1 rounded-xl px-4 py-2.5 min-h-[44px] justify-center bg-white border-2 border-borderBlack"
-          >
+          <View className="flex-1 rounded-xl px-4 py-2.5 min-h-[44px] justify-center bg-white border-2 border-borderBlack">
             <TextInput
               ref={inputRef}
               className="font-medium text-base text-charcoal"
@@ -673,7 +745,7 @@ export default function DokumenteScreen() {
               style={{ minHeight: 20, maxHeight: 100, paddingVertical: 0 }}
             />
           </View>
-          
+
           <TouchableOpacity
             className="rounded-full bg-copper w-11 h-11 items-center justify-center border-2 border-borderBlack shadow-brutal-sm"
             onPress={() => handleSend()}
@@ -694,47 +766,22 @@ export default function DokumenteScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      {/* Header */}
-      <SafeAreaView edges={['top']} className="bg-sand">
-        <View className="flex-row items-center justify-between px-3 py-2">
-          <View className="w-10 items-start">
-            <TouchableOpacity 
-              onPress={() => setShowMenuDrawer(true)} 
-              className="w-9 h-9 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
-            >
-              <Ionicons name="menu" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-          
-          <View className="flex-row items-center gap-2">
-            <Image
-              source={LOGO}
-              style={{ height: 36, width: 36, resizeMode: 'contain' }}
-            />
-            <Text className="font-heading font-black text-lg text-charcoal -mt-0.5">
-              Dokumente
-            </Text>
-          </View>
-          
-          <View className="w-10 items-end">
-            {document ? (
-              <TouchableOpacity 
-                onPress={handleNewDocument} 
-                className="w-9 h-9 bg-copper rounded-lg border-2 border-borderBlack items-center justify-center"
-              >
-                <Ionicons name="add" size={22} color="#FFFFFF" />
-              </TouchableOpacity>
-            ) : (
-              <View className="w-9 h-9" />
-            )}
-          </View>
-        </View>
-        <View className="border-b border-borderBlack mx-3" />
-      </SafeAreaView>
+      <FloatingChatHeader
+        onMenuPress={() => setShowMenuDrawer(true)}
+        onNewChat={handleNewDocument}
+        title="Dokumente"
+        rightIcon="add"
+        showRightIcon={!!document}
+      />
+
+      <AfricanLandscapeWatermark size={280} opacity={0.06} />
 
       {document ? renderChatScreen() : renderUploadScreen()}
 
-      <MenuDrawer visible={showMenuDrawer} onClose={() => setShowMenuDrawer(false)} />
+      <MenuDrawer
+        visible={showMenuDrawer}
+        onClose={() => setShowMenuDrawer(false)}
+      />
     </View>
   );
 }
